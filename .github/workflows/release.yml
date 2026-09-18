@@ -1,8 +1,12 @@
 name: Release
 
-# Publishes to npm via Trusted Publishing (OIDC): no npm token is stored
-# anywhere, and the package gets a provenance attestation.
-# Release flow:  npm version patch && git push --follow-tags
+# Stages a release on npm via Trusted Publishing (OIDC): no npm token is stored
+# anywhere. CI can only STAGE - a maintainer approves with 2FA before the
+# version becomes public, so a compromised repository cannot publish on its own.
+#
+#   1. npm version patch && git push --follow-tags     (this workflow stages it)
+#   2. npm stage list bb-axi                            (needs npm >= 12)
+#   3. npm stage approve <stage-id>                     (prompts for 2FA)
 on:
   push:
     tags: ["v*"]
@@ -12,7 +16,7 @@ permissions:
   id-token: write # required for npm trusted publishing
 
 jobs:
-  publish:
+  stage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -43,9 +47,21 @@ jobs:
           fi
       - if: steps.registry.outputs.published == 'false'
         run: pnpm install --frozen-lockfile
-      # Trusted publishing needs npm >= 11.5.1
+      - if: steps.registry.outputs.published == 'false'
+        run: pnpm run check
+      # `npm stage` needs npm >= 12
       - if: steps.registry.outputs.published == 'false'
         run: npm install -g npm@latest
-      # prepublishOnly runs the full check (typecheck, tests, build, skill freshness)
       - if: steps.registry.outputs.published == 'false'
-        run: npm publish
+        run: npm stage publish
+      - if: steps.registry.outputs.published == 'false'
+        name: How to approve
+        run: |
+          {
+            echo "### Staged, not yet public"
+            echo "Approve with 2FA to publish:"
+            echo '```sh'
+            echo "npm stage list bb-axi"
+            echo "npm stage approve <stage-id>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
