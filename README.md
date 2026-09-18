@@ -27,15 +27,14 @@ help[1]:
 
 The number in front of every diff line is exactly what `--line` / `--old-line` expects, so an agent never does hunk-header arithmetic.
 
-> **Status: early (v0.1.0).** Covered by unit and mocked end-to-end tests; verification against the live Bitbucket API is in progress. Not on npm yet.
+> **Status: early (v0.1.x).** Covered by unit and mocked end-to-end tests; verification against the live Bitbucket API is in progress.
 
 ## Install
 
-Requires Node.js 20+. Until the first npm release, install from source:
+Requires Node.js 20+.
 
 ```sh
-git clone https://github.com/cmosgh/bb-axi.git && cd bb-axi
-pnpm install && pnpm run build && npm link
+npm install -g bb-axi
 ```
 
 Then tell your agent about it - one line in `CLAUDE.md` / `AGENTS.md`:

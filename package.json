@@ -13,7 +13,7 @@
     "code-review"
   ],
   "bin": {
-    "bb-axi": "./dist/bin/bb-axi.js"
+    "bb-axi": "dist/bin/bb-axi.js"
   },
   "files": [
     "dist",
