@@ -1,6 +1,6 @@
 {
   "name": "bb-axi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AXI-compliant Bitbucket Cloud CLI for agents - PR review first: diffs, comments, approvals, build status - with token-efficient TOON output",
   "type": "module",
   "keywords": [
