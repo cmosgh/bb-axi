@@ -54,5 +54,6 @@
   "homepage": "https://github.com/cmosgh/bb-axi#readme",
   "bugs": {
     "url": "https://github.com/cmosgh/bb-axi/issues"
-  }
+  },
+  "packageManager": "pnpm@10.28.2"
 }
