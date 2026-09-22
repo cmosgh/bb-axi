@@ -55,6 +55,19 @@ describe("pr list", () => {
     expect(list.url.searchParams.get("q")).toBe('state="DECLINED" AND (source.branch.name~"wf/")');
   });
 
+  it("--fields state carries each row's disposition", async () => {
+    mockApi([
+      {
+        path: `${BASE}/pullrequests`,
+        json: page([pr({ state: "MERGED" }), pr({ id: 43, title: "Other", state: "DECLINED" })]),
+      },
+    ]);
+    const { stdout } = await run("pr", "list", "--state", "all", "--fields", "state", ...REPO);
+    expect(stdout).toContain("prs[2]{id,title,author,review,state}:");
+    expect(stdout).toContain(",merged");
+    expect(stdout).toContain(",declined");
+  });
+
   it("repeats every state inside BBQL for --state all with a filter", async () => {
     const { calls } = mockApi([{ path: `${BASE}/pullrequests`, json: page([]) }]);
     await run("pr", "list", "--state", "all", "--source", "feature/x", ...REPO);

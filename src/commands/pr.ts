@@ -40,7 +40,7 @@ export const PR_HELP = `usage: bb-axi pr <subcommand> [args] [flags]
 subcommands[12]:
   list, view <id>, diff <id>, comments <id>, comment <id>, approve <id>, unapprove <id>, request-changes <id>, unrequest-changes <id>, create, merge <id>, decline <id>
 flags{list}:
-  --state <open|merged|declined|superseded|all> (default open), --mine (authored by you), --reviewing (you are a reviewer), --source <branch>, --dest <branch>, --query <BBQL>, --limit <1-200> (default 50), --fields <updated,created,source,dest,comments,tasks,url>
+  --state <open|merged|declined|superseded|all> (default open), --mine (authored by you), --reviewing (you are a reviewer), --source <branch>, --dest <branch>, --query <BBQL>, --limit <1-200> (default 50), --fields <state,updated,created,source,dest,comments,tasks,url>
 flags{view}:
   --full (untruncated description)
 flags{diff}:
@@ -102,7 +102,7 @@ export async function prCommand(args: string[], ctx?: RepoContext): Promise<stri
   }
 }
 
-const LIST_EXTRA_FIELDS = ["updated", "created", "source", "dest", "comments", "tasks", "url"] as const;
+const LIST_EXTRA_FIELDS = ["state", "updated", "created", "source", "dest", "comments", "tasks", "url"] as const;
 const STATES = ["open", "merged", "declined", "superseded", "all"] as const;
 
 export function listRow(pr: unknown, extras: readonly string[], me: Awaited<ReturnType<typeof currentUser>>): Obj {
@@ -114,7 +114,8 @@ export function listRow(pr: unknown, extras: readonly string[], me: Awaited<Retu
   };
   const b = branches(pr);
   for (const extra of extras) {
-    if (extra === "updated") row["updated"] = relTime(obj(pr)["updated_on"]);
+    if (extra === "state") row["state"] = prState(pr);
+    else if (extra === "updated") row["updated"] = relTime(obj(pr)["updated_on"]);
     else if (extra === "created") row["created"] = relTime(obj(pr)["created_on"]);
     else if (extra === "source") row["source"] = b.source;
     else if (extra === "dest") row["dest"] = b.dest;
