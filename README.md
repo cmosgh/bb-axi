@@ -27,7 +27,7 @@ help[1]:
 
 The number in front of every diff line is exactly what `--line` / `--old-line` expects, so an agent never does hunk-header arithmetic.
 
-> **Status: early (v0.1.x).** Covered by unit and mocked end-to-end tests; verification against the live Bitbucket API is in progress.
+> **Status: early (v0.1.x).** Covered by unit and mocked end-to-end tests, and used against the live Bitbucket API in real review-triage loops.
 
 ## Install
 
@@ -102,6 +102,18 @@ bb-axi pr comment 42 --path src/sync/worker.ts --line 17 \
 bb-axi pr resolve 42 118                # close a thread once it is addressed
 bb-axi pr request-changes 42
 ```
+
+### Triaging feedback on your own PR
+
+```sh
+bb-axi pr comments 42 --unresolved      # open threads, with ids
+# ...fix the code, push...
+bb-axi pr comment 42 --reply-to 118 --body "Fixed in the latest push."
+bb-axi pr resolve 42 118                # any comment id in the thread works
+bb-axi pr comments 42 --unresolved      # repeat until it reports 0
+```
+
+Every step is safe to re-run: a repeated reply is a no-op and resolving a resolved thread reports `(no-op)`, so an agent can loop until nothing is left open.
 
 `--pending` saves the comment as a Bitbucket draft: visible only to you until you publish it from the PR page. It is the safe mode for agent-drafted feedback - the human reads, edits and publishes. If Bitbucket ever publishes a comment that was requested as pending, `bb-axi` says so loudly in the result.
 
