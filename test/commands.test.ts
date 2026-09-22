@@ -32,7 +32,7 @@ describe("pr list", () => {
     const { calls } = mockApi([{ path: `${BASE}/pullrequests`, json: page([]) }]);
     const { stdout } = await run("pr", "list", "--reviewing", "--source", 'we"ird', ...REPO);
     const q = calls.find((c) => c.path === `${BASE}/pullrequests`)!.url.searchParams.get("q");
-    expect(q).toBe(`reviewers.uuid="${ME.uuid}" AND source.branch.name="we\\"ird"`);
+    expect(q).toBe(`state="OPEN" AND reviewers.uuid="${ME.uuid}" AND source.branch.name="we\\"ird"`);
     expect(stdout).toContain("prs: 0 open pull requests awaiting your review in acme/widgets");
   });
 
@@ -41,6 +41,40 @@ describe("pr list", () => {
     await run("pr", "list", "--state", "all", ...REPO);
     const list = calls.find((c) => c.path === `${BASE}/pullrequests`)!;
     expect(list.url.searchParams.getAll("state")).toEqual(["OPEN", "MERGED", "DECLINED", "SUPERSEDED"]);
+    expect(list.url.searchParams.get("q")).toBeNull();
+  });
+
+  // Bitbucket ignores the `state` parameter as soon as `q` is present, so a
+  // filtered listing has to repeat the state inside the BBQL or it silently
+  // returns every state.
+  it("repeats the state inside BBQL when --query is combined with --state", async () => {
+    const { calls } = mockApi([{ path: `${BASE}/pullrequests`, json: page([]) }]);
+    await run("pr", "list", "--state", "declined", "--query", 'source.branch.name~"wf/"', ...REPO);
+    const list = calls.find((c) => c.path === `${BASE}/pullrequests`)!;
+    expect(list.url.searchParams.getAll("state")).toEqual(["DECLINED"]);
+    expect(list.url.searchParams.get("q")).toBe('state="DECLINED" AND (source.branch.name~"wf/")');
+  });
+
+  it("--fields state carries each row's disposition", async () => {
+    mockApi([
+      {
+        path: `${BASE}/pullrequests`,
+        json: page([pr({ state: "MERGED" }), pr({ id: 43, title: "Other", state: "DECLINED" })]),
+      },
+    ]);
+    const { stdout } = await run("pr", "list", "--state", "all", "--fields", "state", ...REPO);
+    expect(stdout).toContain("prs[2]{id,title,author,review,state}:");
+    expect(stdout).toContain(",merged");
+    expect(stdout).toContain(",declined");
+  });
+
+  it("repeats every state inside BBQL for --state all with a filter", async () => {
+    const { calls } = mockApi([{ path: `${BASE}/pullrequests`, json: page([]) }]);
+    await run("pr", "list", "--state", "all", "--source", "feature/x", ...REPO);
+    const q = calls.find((c) => c.path === `${BASE}/pullrequests`)!.url.searchParams.get("q");
+    expect(q).toBe(
+      '(state="OPEN" OR state="MERGED" OR state="DECLINED" OR state="SUPERSEDED") AND source.branch.name="feature/x"',
+    );
   });
 
   it("follows pagination but refuses to send credentials to another origin", async () => {
@@ -315,6 +349,13 @@ describe("review actions", () => {
     const { stdout } = await run("pr", "create", "--title", "Again", "--source", "feature/retry", ...REPO);
     expect(stdout).toContain("already open for this branch (no-op)");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+    // the guard must be OPEN-scoped in the BBQL: the `state` parameter alone is
+    // ignored once `q` is present, and a merged PR on a reused branch name
+    // would then block the create forever.
+    const lookup = calls.find((c) => c.path === `${BASE}/pullrequests` && c.method === "GET")!;
+    expect(lookup.url.searchParams.get("q")).toBe(
+      'state="OPEN" AND source.branch.name="feature/retry"',
+    );
   });
 
   it("create adds default reviewers but never the author", async () => {
