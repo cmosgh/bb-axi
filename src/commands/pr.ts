@@ -18,7 +18,7 @@ import {
 } from "../pr-model.js";
 import { block, countLine, dig, helpBlock, num, obj, out, relTime, str, truncate, type Obj } from "../render.js";
 import { prApprove, prCreate, prDecline, prMerge, prRequestChanges } from "./pr-actions.js";
-import { prComment, prComments } from "./pr-comments.js";
+import { prComment, prComments, prResolve } from "./pr-comments.js";
 import { prDiff } from "./pr-diff.js";
 
 const SUBCOMMANDS = [
@@ -27,6 +27,8 @@ const SUBCOMMANDS = [
   "diff",
   "comments",
   "comment",
+  "resolve",
+  "unresolve",
   "approve",
   "unapprove",
   "request-changes",
@@ -37,8 +39,8 @@ const SUBCOMMANDS = [
 ] as const;
 
 export const PR_HELP = `usage: bb-axi pr <subcommand> [args] [flags]
-subcommands[12]:
-  list, view <id>, diff <id>, comments <id>, comment <id>, approve <id>, unapprove <id>, request-changes <id>, unrequest-changes <id>, create, merge <id>, decline <id>
+subcommands[14]:
+  list, view <id>, diff <id>, comments <id>, comment <id>, resolve <id> <comment-id>, unresolve <id> <comment-id>, approve <id>, unapprove <id>, request-changes <id>, unrequest-changes <id>, create, merge <id>, decline <id>
 flags{list}:
   --state <open|merged|declined|superseded|all> (default open), --mine (authored by you), --reviewing (you are a reviewer), --source <branch>, --dest <branch>, --query <BBQL>, --limit <1-200> (default 50), --fields <state,updated,created,source,dest,comments,tasks,url>
 flags{view}:
@@ -49,6 +51,8 @@ flags{comments}:
   --unresolved (open threads only), --path <file|dir|glob> (repeatable), --limit <1-500> (default 100), --full (untruncated bodies)
 flags{comment}:
   --body <text> | --body-file <path|->, --path <file> with --line <new-line> or --old-line <old-line>, --reply-to <comment-id>, --pending (draft, visible only to you until published), --allow-duplicate
+flags{resolve,unresolve}:
+  none; any comment id in the thread works (the root is resolved)
 flags{create}:
   --title <text> (required), --source <branch> (default current branch), --dest <branch> (default repo main branch), --body <text> | --body-file <path|->, --reviewer <uuid|display name> (repeatable), --default-reviewers, --draft, --close-source
 flags{merge}:
@@ -85,6 +89,10 @@ export async function prCommand(args: string[], ctx?: RepoContext): Promise<stri
       return prComments(rest, repo);
     case "comment":
       return prComment(rest, repo);
+    case "resolve":
+      return prResolve(rest, repo, true);
+    case "unresolve":
+      return prResolve(rest, repo, false);
     case "approve":
       return prApprove(rest, repo, true);
     case "unapprove":

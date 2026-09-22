@@ -298,6 +298,60 @@ describe("pr comment", () => {
   });
 });
 
+describe("pr resolve / unresolve", () => {
+  const ROOT = { id: 1, content: { raw: "Guard the null case" }, user: BOB, inline: { path: "src/a.ts", to: 12 } };
+  const REPLY = { id: 3, content: { raw: "Done" }, user: ANA, parent: { id: 1 }, inline: { path: "src/a.ts", to: 12 } };
+
+  it("resolves the thread root when given a reply id", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/pullrequests/42/comments/3`, json: REPLY },
+      { path: `${BASE}/pullrequests/42/comments/1`, json: ROOT },
+      { method: "POST", path: `${BASE}/pullrequests/42/comments/1/resolve`, json: { type: "resolved" } },
+    ]);
+    const { stdout, exitCode } = await run("pr", "resolve", "42", "3", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual([`${BASE}/pullrequests/42/comments/1/resolve`]);
+    expect(stdout).toContain("thread: 1");
+    expect(stdout).toContain("via: reply 3");
+    expect(stdout).toContain("result: resolved");
+    expect(stdout).toContain("bb-axi pr comments 42 --unresolved -R acme/widgets");
+  });
+
+  it("is idempotent in both directions", async () => {
+    let api = mockApi([{ path: `${BASE}/pullrequests/42/comments/1`, json: { ...ROOT, resolution: { type: "resolved" } } }]);
+    const already = await run("pr", "resolve", "42", "1", ...REPO);
+    expect(already.exitCode).toBe(0);
+    expect(already.stdout).toContain("already resolved (no-op)");
+    expect(api.calls.some((c) => c.method !== "GET")).toBe(false);
+
+    api = mockApi([{ path: `${BASE}/pullrequests/42/comments/1`, json: ROOT }]);
+    const open = await run("pr", "unresolve", "42", "1", ...REPO);
+    expect(open.stdout).toContain("already open (no-op)");
+    expect(api.calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("reopens with DELETE and suggests a reply", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/pullrequests/42/comments/1`, json: { ...ROOT, resolution: { type: "resolved" } } },
+      { method: "DELETE", path: `${BASE}/pullrequests/42/comments/1/resolve`, status: 204 },
+    ]);
+    const { stdout } = await run("pr", "unresolve", "42", "1", ...REPO);
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+    expect(stdout).toContain("result: reopened");
+    expect(stdout).toContain("--reply-to 1");
+  });
+
+  it("validates both ids before any network call", async () => {
+    const { calls } = mockApi([]);
+    const missing = await run("pr", "resolve", "42", ...REPO);
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stdout).toContain("<id> <comment-id>");
+    const bad = await run("pr", "resolve", "42", "abc", ...REPO);
+    expect(bad.exitCode).toBe(2);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("review actions", () => {
   it("approve is a no-op when already approved, and posts otherwise", async () => {
     const approved = pr({

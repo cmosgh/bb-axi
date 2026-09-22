@@ -65,7 +65,8 @@ export function mockApi(routes: Route[]): { calls: Call[] } {
     const status = dynamic?.status ?? route.status ?? 200;
     const text = dynamic?.text ?? route.text;
     const json = dynamic?.json ?? route.json;
-    return new Response(text ?? JSON.stringify(json ?? {}), { status });
+    // A 204 must not carry a body; Response throws if given one.
+    return new Response(status === 204 ? null : (text ?? JSON.stringify(json ?? {})), { status });
   });
   return { calls };
 }

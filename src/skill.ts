@@ -4,7 +4,7 @@ import { DESCRIPTION } from "./cli.js";
 // outcome-focused so it fires on "needs Bitbucket" intents.
 export const SKILL_DESCRIPTION =
   "Operate Bitbucket Cloud through the bb-axi CLI - list and inspect pull requests, read annotated diffs, read and post " +
-  "inline/reply/draft review comments, approve or request changes, create/merge/decline pull requests, check build status, " +
+  "inline/reply/draft review comments, resolve threads, approve or request changes, create/merge/decline pull requests, check build status, " +
   "and read Bitbucket Pipelines runs and logs. Use whenever a task touches a bitbucket.org repository or pull request.";
 
 // Hard cap so a regeneration cannot re-inflate the stub with CLI-owned

@@ -79,6 +79,7 @@ The repository comes from the `bitbucket.org` remote of the current checkout; ov
 | `pr diff <id>` | File table + line-number-annotated diff. `--path <file\|dir\|glob>`, `--stat`, `--raw`, `--full`. Lockfiles and bundles are elided; 32k-char budget cut at file boundaries |
 | `pr comments <id>` | Threads in order, replies under their root, `open / resolved / pending / outdated`, thread counts. `--unresolved`, `--path` |
 | `pr comment <id>` | `--body` or `--body-file <path\|->`; inline with `--path` + `--line` / `--old-line`; `--reply-to <id>`; `--pending` for a draft only you can see |
+| `pr resolve / unresolve <id> <comment-id>` | Resolve or reopen a thread; any comment in it works. Idempotent |
 | `pr approve / unapprove / request-changes / unrequest-changes <id>` | Idempotent - repeating is a no-op, exit 0 |
 | `pr create` | `--title`, `--source` (default: current branch), `--dest`, `--reviewer`, `--default-reviewers`, `--draft`. No-op if the branch already has an open PR |
 | `pr merge <id>` / `pr decline <id>` | Print a preview unless `--confirm` is passed |
@@ -98,6 +99,7 @@ bb-axi pr diff 42                       # annotated diff
 bb-axi pr comments 42 --unresolved      # what is still being discussed
 bb-axi pr comment 42 --path src/sync/worker.ts --line 17 \
   --body "Break out of the loop once push succeeds." --pending
+bb-axi pr resolve 42 118                # close a thread once it is addressed
 bb-axi pr request-changes 42
 ```
 
