@@ -3,7 +3,7 @@ import { bool, expectPositionals, flag, flags, intFlag, parseArgs, positiveId, t
 import { bbJson, bbPaginate } from "../client.js";
 import { repoHint, type RepoContext } from "../context.js";
 import { matchesPath } from "../diff.js";
-import { usageError } from "../errors.js";
+import { axiError, usageError } from "../errors.js";
 import { currentUser } from "../me.js";
 import { prPath } from "../pr-api.js";
 import { authorName, commentLocation } from "../pr-model.js";
@@ -146,6 +146,7 @@ export async function prComments(args: string[], ctx: RepoContext): Promise<stri
   if (anyTruncated) help.push(`Run \`bb-axi pr comments ${id} --full${hint}\` for untruncated bodies`);
   if (more) help.push(`Only the first ${limit} comments were read; raise \`--limit\` (max 500)`);
   help.push(`Reply: \`bb-axi pr comment ${id} --reply-to <comment-id> --body "<text>"${hint}\``);
+  if (unresolvedCount > 0) help.push(`Resolve a thread: \`bb-axi pr resolve ${id} <comment-id>${hint}\``);
 
   return out(
     block({
@@ -279,5 +280,44 @@ export async function prComment(args: string[], ctx: RepoContext): Promise<strin
       },
     }),
     helpBlock(help),
+  );
+}
+
+/** resolve=true -> resolve the thread, resolve=false -> reopen it. Both idempotent. */
+export async function prResolve(args: string[], ctx: RepoContext, resolve: boolean): Promise<string> {
+  const command = `bb-axi pr ${resolve ? "resolve" : "unresolve"}`;
+  const parsed = parseArgs(args, [], command);
+  const [rawId, rawComment] = expectPositionals(parsed, 2, `${command} <id> <comment-id>`);
+  const id = positiveId(rawId, "pull request id");
+  const commentId = positiveId(rawComment, "comment id");
+  const hint = repoHint(ctx);
+
+  // Bitbucket resolves a thread through its root comment. Accept any comment
+  // in the thread so an agent can pass the reply it just posted.
+  const commentPath = (cid: number): string => `${prPath(ctx, id)}/comments/${cid}`;
+  let root = toComment(await bbJson(commentPath(commentId)));
+  const seen = new Set<number>();
+  while (root.parentId !== undefined && !seen.has(root.id)) {
+    seen.add(root.id);
+    root = toComment(await bbJson(commentPath(root.parentId)));
+  }
+  if (root.raw["deleted"] === true) {
+    throw axiError(`cannot ${resolve ? "resolve" : "reopen"} comment ${root.id}: it is deleted`, "CONFLICT");
+  }
+
+  const summary: Obj = { thread: root.id, pr: id, at: commentLocation(root.raw) };
+  if (root.id !== commentId) summary["via"] = `reply ${commentId}`;
+  if (isResolved(root) === resolve) {
+    return block({ comment: { ...summary, result: resolve ? "already resolved (no-op)" : "already open (no-op)" } });
+  }
+
+  await bbJson(`${commentPath(root.id)}/resolve`, { method: resolve ? "POST" : "DELETE" });
+  return out(
+    block({ comment: { ...summary, result: resolve ? "resolved" : "reopened" } }),
+    helpBlock(
+      resolve
+        ? [`Run \`bb-axi pr comments ${id} --unresolved${hint}\` for the threads still open`]
+        : [`Reply: \`bb-axi pr comment ${id} --reply-to ${root.id} --body "<text>"${hint}\``],
+    ),
   );
 }
