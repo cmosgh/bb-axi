@@ -1,6 +1,6 @@
 import { bool, enumFlag, expectPositionals, flag, intFlag, parseArgs, parseFields, positiveId } from "../args.js";
 import { bbPaginate } from "../client.js";
-import { fetchPr } from "../pr-api.js";
+import { bbqlString, fetchPr, stateClause } from "../pr-api.js";
 import { repoHint, repoPath, requireRepo, type RepoContext } from "../context.js";
 import { axiError, usageError } from "../errors.js";
 import { currentUser } from "../me.js";
@@ -105,10 +105,6 @@ export async function prCommand(args: string[], ctx?: RepoContext): Promise<stri
 const LIST_EXTRA_FIELDS = ["updated", "created", "source", "dest", "comments", "tasks", "url"] as const;
 const STATES = ["open", "merged", "declined", "superseded", "all"] as const;
 
-function bbqlString(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
 export function listRow(pr: unknown, extras: readonly string[], me: Awaited<ReturnType<typeof currentUser>>): Obj {
   const row: Obj = {
     id: num(obj(pr)["id"]) ?? null,
@@ -153,9 +149,11 @@ async function prList(args: string[], ctx: RepoContext): Promise<string> {
   const me = await currentUser();
   const clauses: string[] = [];
   // The endpoint defaults to OPEN only, so the state is always sent as the
-  // documented (repeatable) `state` parameter rather than folded into BBQL.
-  const stateParam =
-    state === "all" ? (["OPEN", "MERGED", "DECLINED", "SUPERSEDED"] as const) : [state.toUpperCase()];
+  // documented (repeatable) `state` parameter. It is ALSO folded into BBQL
+  // below whenever a `q` is sent, because Bitbucket silently ignores `state`
+  // in that case - `--state declined --query ...` would otherwise return
+  // every state. Sending both keeps the two forms in agreement.
+  const states = state === "all" ? ["OPEN", "MERGED", "DECLINED", "SUPERSEDED"] : [state.toUpperCase()];
   if (bool(parsed, "--mine") || bool(parsed, "--reviewing")) {
     if (!me) {
       throw axiError("--mine/--reviewing need a user identity", "AUTH_REQUIRED", [
@@ -171,10 +169,11 @@ async function prList(args: string[], ctx: RepoContext): Promise<string> {
   if (dest) clauses.push(`destination.branch.name=${bbqlString(dest)}`);
   const rawQuery = flag(parsed, "--query");
   if (rawQuery) clauses.push(`(${rawQuery})`);
+  if (clauses.length > 0) clauses.unshift(stateClause(states));
 
   const page = await bbPaginate(`${repoPath(ctx)}/pullrequests`, {
     query: {
-      state: stateParam,
+      state: states,
       q: clauses.length > 0 ? clauses.join(" AND ") : undefined,
       sort: "-updated_on",
       fields: PR_LIST_FIELDS,

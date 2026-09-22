@@ -3,7 +3,7 @@ import { bbJson, bbPaginate } from "../client.js";
 import { currentBranch, repoHint, repoPath, type RepoContext } from "../context.js";
 import { axiError, usageError } from "../errors.js";
 import { currentUser } from "../me.js";
-import { fetchPr, prPath } from "../pr-api.js";
+import { fetchPr, prPath, stateClause } from "../pr-api.js";
 import { branches, buildsSummary, isAuthor, myReviewStatus, prState, reviewSummary } from "../pr-model.js";
 import { arr, block, dig, helpBlock, num, obj, out, str, type Obj } from "../render.js";
 import { readBody } from "./pr-comments.js";
@@ -160,7 +160,13 @@ export async function prCreate(args: string[], ctx: RepoContext): Promise<string
 
   // Idempotent: an open PR for the same source (and destination) already is the desired state.
   const me = await currentUser();
-  const existingQuery = [`source.branch.name="${source.replace(/"/g, '\\"')}"`];
+  // `state="OPEN"` goes in the BBQL too: Bitbucket ignores the `state`
+  // parameter whenever `q` is present, and without it a MERGED or DECLINED PR
+  // on the same branch would be reported as "already open" and block the create.
+  const existingQuery = [
+    stateClause(["OPEN"]),
+    `source.branch.name="${source.replace(/"/g, '\\"')}"`,
+  ];
   if (dest) existingQuery.push(`destination.branch.name="${dest.replace(/"/g, '\\"')}"`);
   const existing = await bbPaginate(`${repoPath(ctx)}/pullrequests`, {
     query: { state: "OPEN", q: existingQuery.join(" AND ") },
