@@ -12,7 +12,7 @@ subcommands[3]:
 flags{login}:
   --email <atlassian-account-email> (required), --token-stdin (required; the API token is read from stdin, never from argv)
 notes:
-  Create an API token with scopes at https://id.atlassian.com/manage-profile/security/api-tokens (scopes: read:user:bitbucket, read:workspace:bitbucket, read:repository:bitbucket, read:pullrequest:bitbucket, write:pullrequest:bitbucket, read:pipeline:bitbucket).
+  Create an API token with scopes at https://id.atlassian.com/manage-profile/security/api-tokens (scopes: read:user:bitbucket, read:workspace:bitbucket, read:repository:bitbucket, read:pullrequest:bitbucket, write:pullrequest:bitbucket, read:pipeline:bitbucket; add write:pipeline:bitbucket for pipeline rerun/stop).
   The token is stored in the OS keychain. Environment overrides: BITBUCKET_EMAIL + BITBUCKET_API_TOKEN, or BITBUCKET_ACCESS_TOKEN (workspace/repo access token).
 examples[3]:
   pbpaste | bb-axi auth login --email you@example.com --token-stdin

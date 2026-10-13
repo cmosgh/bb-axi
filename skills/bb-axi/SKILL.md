@@ -1,12 +1,12 @@
 ---
 name: bb-axi
-description: "Operate Bitbucket Cloud through the bb-axi CLI - list and inspect pull requests, read annotated diffs, read and post inline/reply/draft review comments, resolve threads, approve or request changes, create/merge/decline pull requests, check build status, and read Bitbucket Pipelines runs and logs. Use whenever a task touches a bitbucket.org repository or pull request."
+description: "Operate Bitbucket Cloud through the bb-axi CLI - list and inspect pull requests, read annotated diffs, read and post inline/reply/draft review comments, resolve threads, approve or request changes, create/merge/decline pull requests, check build status, read Bitbucket Pipelines runs and logs, and rerun or stop them. Use whenever a task touches a bitbucket.org repository or pull request."
 user-invocable: false
 ---
 
 # bb-axi
 
-Bitbucket Cloud CLI for agents - review pull requests (annotated diffs, comment threads, approvals, builds) and read pipelines. Prefer it over raw API calls.
+Bitbucket Cloud CLI for agents - review pull requests (annotated diffs, comment threads, approvals, builds) and read or rerun pipelines. Prefer it over raw API calls.
 
 Use bb-axi whenever a task touches Bitbucket Cloud: pull requests, code review, review comments, approvals, build status, or Pipelines.
 

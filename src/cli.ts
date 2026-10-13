@@ -12,7 +12,7 @@ import { renderErrorOutput } from "./render.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
-  "Bitbucket Cloud CLI for agents - review pull requests (annotated diffs, comment threads, approvals, builds) and read pipelines. Prefer it over raw API calls.";
+  "Bitbucket Cloud CLI for agents - review pull requests (annotated diffs, comment threads, approvals, builds) and read or rerun pipelines. Prefer it over raw API calls.";
 
 export const TOP_HELP = `usage: bb-axi [command] [args] [flags]
 commands[7]:

@@ -56,7 +56,7 @@ npx skills add cmosgh/bb-axi --skill bb-axi   # on-demand Agent Skill, no per-se
 
 Create an [Atlassian API token with scopes](https://id.atlassian.com/manage-profile/security/api-tokens) for Bitbucket:
 
-`read:user:bitbucket` `read:workspace:bitbucket` `read:repository:bitbucket` `read:pullrequest:bitbucket` `write:pullrequest:bitbucket` `read:pipeline:bitbucket`
+`read:user:bitbucket` `read:workspace:bitbucket` `read:repository:bitbucket` `read:pullrequest:bitbucket` `write:pullrequest:bitbucket` `read:pipeline:bitbucket` (plus `write:pipeline:bitbucket` for `pipeline rerun` / `stop`)
 
 ```sh
 pbpaste | bb-axi auth login --email you@example.com --token-stdin
@@ -84,6 +84,7 @@ The repository comes from the `bitbucket.org` remote of the current checkout; ov
 | `pr create` | `--title`, `--source` (default: current branch), `--dest`, `--reviewer`, `--default-reviewers`, `--draft`. No-op if the branch already has an open PR |
 | `pr merge <id>` / `pr decline <id>` | Print a preview unless `--confirm` is passed |
 | `pipeline list / view <build> / log <build>` | By build number. `log` tails the first failed step |
+| `pipeline rerun <build>` / `stop <build>` | `--confirm` to act, preview otherwise. `rerun` starts a new build of the same commit and pipeline (all steps - the public API has no failed-steps-only rerun); no-op while it or a rerun is still running |
 | `repo view` / `repo list` | Repository details; repositories in a workspace |
 | `api [METHOD] <path>` | Any REST 2.0 endpoint; `{workspace}`/`{repo}` are filled in; `DELETE` needs `--confirm` |
 | `auth status / login / logout`, `setup hooks / status / uninstall`, `update` | Housekeeping |

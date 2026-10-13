@@ -467,6 +467,12 @@ describe("pipelines", () => {
     expect(stdout).toContain("bb-axi pipeline log <build-number>");
   });
 
+  it("shows the source branch for pull request pipelines", async () => {
+    const prRun = { ...pipeline, target: { type: "pipeline_pullrequest_target", source: "feature/x", selector: { type: "pull-requests", pattern: "**" } } };
+    mockApi([{ path: `${BASE}/pipelines`, json: page([prRun]) }]);
+    expect((await run("pipeline", "list", ...REPO)).stdout).toContain("1284,failed,feature/x,1h ago");
+  });
+
   it("log picks the first failed step and tails it", async () => {
     mockApi([
       { path: `${BASE}/pipelines`, json: page([pipeline]) },
@@ -484,6 +490,82 @@ describe("pipelines", () => {
     expect(stdout).toContain("AssertionError: expected 1 to be 2");
     expect(stdout).toContain("truncated, showing last");
     expect(stdout).toContain("bb-axi pipeline log 1284 --step 2 --full");
+  });
+
+  const deployRun = {
+    ...pipeline,
+    state: { name: "COMPLETED", result: { name: "STOPPED" } },
+    target: {
+      type: "pipeline_ref_target",
+      ref_type: "branch",
+      ref_name: "main",
+      commit: { type: "commit", hash: "0123456789abcdef", links: { self: { href: "x" } } },
+      selector: { type: "branches", pattern: "main" },
+    },
+    variables: [{ key: "TIER", value: "full", secured: false, uuid: "{v1}" }],
+  };
+
+  it("rerun previews without --confirm and makes no POST", async () => {
+    const { calls } = mockApi([{ path: `${BASE}/pipelines`, json: page([deployRun]) }]);
+    const { stdout, exitCode } = await run("pipeline", "rerun", "1284", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("NOT started - preview only");
+    expect(stdout).toContain("pipeline: branches main");
+    expect(stdout).toContain("bb-axi pipeline rerun 1284 --confirm -R acme/widgets");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("rerun --confirm posts a clean target with the original variables", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/pipelines`, json: page([deployRun]) },
+      { method: "POST", path: `${BASE}/pipelines/`, json: { uuid: "{pipe-2}", build_number: 1285 } },
+    ]);
+    const { stdout } = await run("pipeline", "rerun", "1284", "--confirm", ...REPO);
+    const post = calls.find((c) => c.method === "POST")!;
+    expect(post.body).toEqual({
+      target: {
+        type: "pipeline_ref_target",
+        ref_type: "branch",
+        ref_name: "main",
+        commit: { type: "commit", hash: "0123456789abcdef" },
+        selector: { type: "branches", pattern: "main" },
+      },
+      variables: [{ key: "TIER", value: "full" }],
+    });
+    expect(stdout).toContain("build: 1285");
+    expect(stdout).toContain("bb-axi pipeline view 1285 -R acme/widgets");
+  });
+
+  it("rerun is a no-op while a newer run of the same commit and pipeline is in flight", async () => {
+    const rerun = { ...deployRun, uuid: "{pipe-2}", build_number: 1285, state: { name: "IN_PROGRESS", stage: { name: "RUNNING" } } };
+    const { calls } = mockApi([{ path: `${BASE}/pipelines`, json: page([rerun, deployRun]) }]);
+    const { stdout, exitCode } = await run("pipeline", "rerun", "1284", "--confirm", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("build 1285 already runs the same commit and pipeline (no-op)");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("rerun refuses runs that used secured variables", async () => {
+    mockApi([{ path: `${BASE}/pipelines`, json: page([{ ...deployRun, variables: [{ key: "K", value: "", secured: true }] }]) }]);
+    const { stdout, exitCode } = await run("pipeline", "rerun", "1284", "--confirm", ...REPO);
+    expect(exitCode).toBe(2);
+    expect(stdout).toContain("secured variables");
+  });
+
+  it("stop is a no-op on a finished run and posts stopPipeline on a running one", async () => {
+    const done = mockApi([{ path: `${BASE}/pipelines`, json: page([deployRun]) }]);
+    expect((await run("pipeline", "stop", "1284", "--confirm", ...REPO)).stdout).toContain("already finished - stopped (no-op)");
+    expect(done.calls.some((c) => c.method === "POST")).toBe(false);
+
+    const running = { ...deployRun, state: { name: "IN_PROGRESS", stage: { name: "RUNNING" } } };
+    const { calls } = mockApi([
+      { path: `${BASE}/pipelines`, json: page([running]) },
+      { method: "POST", path: `${BASE}/pipelines/%7Bpipe-1%7D/stopPipeline`, status: 204 },
+    ]);
+    expect((await run("pipeline", "stop", "1284", ...REPO)).stdout).toContain("NOT stopped - preview only");
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    expect((await run("pipeline", "stop", "1284", "--confirm", ...REPO)).stdout).toContain("stop requested");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 });
 

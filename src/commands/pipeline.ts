@@ -5,18 +5,21 @@ import { axiError, AxiError, usageError } from "../errors.js";
 import { block, countLine, dig, duration, helpBlock, num, obj, out, relTime, str, truncateTail, type Obj } from "../render.js";
 
 export const PIPELINE_HELP = `usage: bb-axi pipeline <subcommand> [args] [flags]
-subcommands[3]:
-  list, view <build-number>, log <build-number>
+subcommands[5]:
+  list, view <build-number>, log <build-number>, rerun <build-number>, stop <build-number>
 flags{list}:
   --branch <name>, --limit <1-100> (default 20), --fields <commit,duration,creator,trigger>
 flags{log}:
   --step <n> (default: first failed step, else the last step), --full (whole log instead of the tail)
+flags{rerun,stop}:
+  --confirm (without it: preview only). rerun starts a new build of every step on the same commit and pipeline; needs write:pipeline:bitbucket
 global:
   -R/--repo <workspace>/<repo>
-examples[3]:
+examples[4]:
   bb-axi pipeline list --branch main
   bb-axi pipeline view 1284
   bb-axi pipeline log 1284
+  bb-axi pipeline rerun 1284 --confirm
 `;
 
 const LIST_EXTRA_FIELDS = ["commit", "duration", "creator", "trigger"] as const;
@@ -31,17 +34,21 @@ export function pipelineStatus(entity: unknown): string {
   return name.toLowerCase().replace(/\s+/g, "_");
 }
 
+const SUBCOMMANDS = ["list", "view", "log", "rerun", "stop"] as const;
+
 export async function pipelineCommand(args: string[], ctx?: RepoContext): Promise<string> {
   const [sub, ...rest] = args;
-  if (sub !== "list" && sub !== "view" && sub !== "log") {
+  if (!SUBCOMMANDS.includes(sub as (typeof SUBCOMMANDS)[number])) {
     throw usageError(sub ? `unknown pipeline subcommand '${sub}'` : "missing pipeline subcommand", [
-      "subcommands: list, view <build-number>, log <build-number>",
+      "subcommands: list, view <build-number>, log <build-number>, rerun <build-number>, stop <build-number>",
       "Run `bb-axi pipeline --help` for flags",
     ]);
   }
   const repo = requireRepo(ctx);
   if (sub === "list") return pipelineList(rest, repo);
   if (sub === "view") return pipelineView(rest, repo);
+  if (sub === "rerun") return pipelineRerun(rest, repo);
+  if (sub === "stop") return pipelineStop(rest, repo);
   return pipelineLog(rest, repo);
 }
 
@@ -71,7 +78,7 @@ async function pipelineList(args: string[], ctx: RepoContext): Promise<string> {
     const row: Obj = {
       build: num(p["build_number"]) ?? null,
       status: pipelineStatus(p),
-      ref: str(dig(p, "target", "ref_name")) || str(dig(p, "target", "selector", "pattern")) || "unknown",
+      ref: refName(p),
       age: relTime(p["created_on"]),
     };
     for (const extra of extras) {
@@ -94,10 +101,10 @@ async function pipelineList(args: string[], ctx: RepoContext): Promise<string> {
  * Bitbucket addresses pipelines by uuid, agents by build number. Build numbers
  * are sequential, so the newest page tells us which page holds the target.
  */
-async function resolvePipeline(ctx: RepoContext, buildNumber: number): Promise<Obj> {
+async function resolvePipeline(ctx: RepoContext, buildNumber: number, newest?: Obj): Promise<Obj> {
   const base = `${repoPath(ctx)}/pipelines`;
   const pagelen = 100;
-  const first = obj(await bbJson(base, { query: { sort: "-created_on", pagelen } }));
+  const first = newest ?? (await fetchNewest(ctx));
   const find = (page: Obj): Obj | undefined =>
     (Array.isArray(page["values"]) ? page["values"] : [])
       .map(obj)
@@ -106,9 +113,9 @@ async function resolvePipeline(ctx: RepoContext, buildNumber: number): Promise<O
   const hit = find(first);
   if (hit) return hit;
 
-  const newest = num(obj((first["values"] as unknown[] | undefined)?.[0])["build_number"]);
-  if (newest !== undefined && buildNumber < newest) {
-    const targetPage = Math.floor((newest - buildNumber) / pagelen) + 1;
+  const latest = num(obj((first["values"] as unknown[] | undefined)?.[0])["build_number"]);
+  if (latest !== undefined && buildNumber < latest) {
+    const targetPage = Math.floor((latest - buildNumber) / pagelen) + 1;
     // Deleted runs shift the offset slightly, so probe the neighbours too.
     for (const pageNumber of [targetPage, targetPage - 1, targetPage + 1]) {
       if (pageNumber < 2) continue;
@@ -120,6 +127,160 @@ async function resolvePipeline(ctx: RepoContext, buildNumber: number): Promise<O
   throw axiError(`pipeline build ${buildNumber} not found in ${ctx.slug}`, "NOT_FOUND", [
     `Run \`bb-axi pipeline list${repoHint(ctx)}\` to see recent build numbers`,
   ]);
+}
+
+async function fetchNewest(ctx: RepoContext): Promise<Obj> {
+  return obj(await bbJson(`${repoPath(ctx)}/pipelines`, { query: { sort: "-created_on", pagelen: 100 } }));
+}
+
+/** Pull request targets carry the branch as `source`, not `ref_name`. */
+function refName(pipeline: Obj): string {
+  const target = obj(pipeline["target"]);
+  return str(target["ref_name"]) || str(target["source"]) || str(dig(target, "selector", "pattern")) || "unknown";
+}
+
+function isCompleted(pipeline: Obj): boolean {
+  return str(dig(pipeline, "state", "name")) === "COMPLETED";
+}
+
+function selectorLabel(pipeline: Obj): string {
+  const type = str(dig(pipeline, "target", "selector", "type")) || "default";
+  const pattern = str(dig(pipeline, "target", "selector", "pattern"));
+  return pattern && pattern !== type ? `${type} ${pattern}` : type;
+}
+
+/** The GET target carries read-only expansions; POST wants refs and hashes only. */
+export function rerunTarget(target: Obj): Obj {
+  const clean: Obj = {};
+  for (const [key, value] of Object.entries(target)) {
+    if (key === "commit" || key === "destination_commit") {
+      const hash = str(obj(value)["hash"]);
+      if (hash) clean[key] = { type: "commit", hash };
+    } else if (key === "pullrequest") {
+      clean[key] = { id: String(obj(value)["id"] ?? "") };
+    } else if (key === "selector") {
+      const selector = obj(value);
+      clean[key] = { type: str(selector["type"]), ...(selector["pattern"] ? { pattern: str(selector["pattern"]) } : {}) };
+    } else if (typeof value === "string") {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
+async function pipelineRerun(args: string[], ctx: RepoContext): Promise<string> {
+  const command = "bb-axi pipeline rerun";
+  const parsed = parseArgs(args, [{ name: "--confirm", boolean: true }], command);
+  const [raw] = expectPositionals(parsed, 1, `${command} <build-number> --confirm`);
+  const build = positiveId(raw, "build number");
+  const hint = repoHint(ctx);
+
+  const newest = await fetchNewest(ctx);
+  const pipeline = await resolvePipeline(ctx, build, newest);
+  const target = obj(pipeline["target"]);
+  const commit = str(dig(target, "commit", "hash"));
+  const ref = refName(pipeline);
+  const selector = selectorLabel(pipeline);
+
+  if (!isCompleted(pipeline)) {
+    return out(
+      block({ build, result: `still ${pipelineStatus(pipeline)} (no-op)` }),
+      helpBlock([`Run \`bb-axi pipeline stop ${build}${hint}\` to stop it first`]),
+    );
+  }
+  // A run of the same commit and pipeline already in flight means a rerun was started.
+  const inFlight = (Array.isArray(newest["values"]) ? newest["values"] : [])
+    .map(obj)
+    .find(
+      (p) =>
+        (num(p["build_number"]) ?? 0) > build &&
+        !isCompleted(p) &&
+        str(dig(p, "target", "commit", "hash")) === commit &&
+        selectorLabel(p) === selector,
+    );
+  if (inFlight) {
+    const running = num(inFlight["build_number"]);
+    return out(
+      block({ build, result: `build ${running} already runs the same commit and pipeline (no-op)` }),
+      helpBlock([`Run \`bb-axi pipeline view ${running}${hint}\` for its steps`]),
+    );
+  }
+
+  const variables = (Array.isArray(pipeline["variables"]) ? pipeline["variables"] : []).map(obj);
+  if (variables.some((v) => v["secured"] === true)) {
+    throw axiError(`build ${build} used secured variables - their values cannot be read back for a rerun`, "VALIDATION_ERROR", [
+      "Rerun it from the Bitbucket UI",
+    ]);
+  }
+
+  if (!bool(parsed, "--confirm")) {
+    return out(
+      block({
+        rerun_preview: {
+          build,
+          status: pipelineStatus(pipeline),
+          ref,
+          commit: commit.slice(0, 8),
+          pipeline: selector,
+          variables: variables.length,
+          result: "NOT started - preview only (reruns every step including deployments)",
+        },
+      }),
+      helpBlock([`Run \`bb-axi pipeline rerun ${build} --confirm${hint}\` to start a new build`]),
+    );
+  }
+
+  const body: Obj = { target: rerunTarget(target) };
+  if (variables.length > 0) {
+    body["variables"] = variables.map((v) => ({ key: str(v["key"]), value: str(v["value"]) }));
+  }
+  const created = obj(await bbJson(`${repoPath(ctx)}/pipelines/`, { method: "POST", body }));
+  const next = num(created["build_number"]);
+  return out(
+    block({
+      build: next ?? "unknown",
+      result: `started - rerun of build ${build}`,
+      ref,
+      commit: commit.slice(0, 8),
+      pipeline: selector,
+    }),
+    helpBlock(next === undefined ? [] : [`Run \`bb-axi pipeline view ${next}${hint}\` to follow its steps`]),
+  );
+}
+
+async function pipelineStop(args: string[], ctx: RepoContext): Promise<string> {
+  const command = "bb-axi pipeline stop";
+  const parsed = parseArgs(args, [{ name: "--confirm", boolean: true }], command);
+  const [raw] = expectPositionals(parsed, 1, `${command} <build-number> --confirm`);
+  const build = positiveId(raw, "build number");
+  const hint = repoHint(ctx);
+
+  const pipeline = await resolvePipeline(ctx, build);
+  if (isCompleted(pipeline)) {
+    return block({ build, result: `already finished - ${pipelineStatus(pipeline)} (no-op)` });
+  }
+  if (!bool(parsed, "--confirm")) {
+    return out(
+      block({
+        stop_preview: {
+          build,
+          status: pipelineStatus(pipeline),
+          ref: refName(pipeline),
+          pipeline: selectorLabel(pipeline),
+          result: "NOT stopped - preview only (running steps are halted mid-way)",
+        },
+      }),
+      helpBlock([`Run \`bb-axi pipeline stop ${build} --confirm${hint}\` to stop it`]),
+    );
+  }
+  await bbJson(`${repoPath(ctx)}/pipelines/${encodeURIComponent(str(pipeline["uuid"]))}/stopPipeline`, { method: "POST" });
+  return out(
+    block({ build, result: "stop requested" }),
+    helpBlock([
+      `Run \`bb-axi pipeline view ${build}${hint}\` to confirm it stopped`,
+      `Run \`bb-axi pipeline rerun ${build}${hint}\` to preview a fresh run`,
+    ]),
+  );
 }
 
 async function fetchSteps(ctx: RepoContext, pipelineUuid: string): Promise<Obj[]> {
@@ -153,7 +314,7 @@ async function pipelineView(args: string[], ctx: RepoContext): Promise<string> {
       pipeline: {
         build,
         status,
-        ref: str(dig(pipeline, "target", "ref_name")) || "unknown",
+        ref: refName(pipeline),
         commit: str(dig(pipeline, "target", "commit", "hash")).slice(0, 8),
         trigger: str(dig(pipeline, "trigger", "name")).toLowerCase() || "unknown",
         creator: str(dig(pipeline, "creator", "display_name")) || "unknown",

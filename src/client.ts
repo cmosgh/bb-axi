@@ -81,7 +81,7 @@ function errorForStatus(status: number, bodyText: string, method: string): AxiEr
       return axiError(`access denied${suffix}`, "FORBIDDEN", [
         method === "GET"
           ? "The API token is likely missing a read scope (read:repository:bitbucket, read:pullrequest:bitbucket, read:pipeline:bitbucket)"
-          : "The API token is likely missing a write scope (write:pullrequest:bitbucket) or you lack permission on this repository",
+          : "The API token is likely missing a write scope (write:pullrequest:bitbucket; write:pipeline:bitbucket for pipeline rerun/stop) or you lack permission on this repository",
       ]);
     case 404:
       return axiError(`not found${suffix}`, "NOT_FOUND", [
