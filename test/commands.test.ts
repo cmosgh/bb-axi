@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ANA, BASE, BOB, ME, mockApi, pr, REPO, run, useTestEnv } from "./helpers.js";
 
@@ -685,5 +688,42 @@ describe("cli surface", () => {
     expect(exitCode).toBe(1);
     expect(stdout).toContain("code: AUTH_REQUIRED");
     expect(stdout).toContain("--token-stdin");
+  });
+});
+
+describe("setup hooks", () => {
+  const saved = { home: process.env["HOME"], argv1: process.argv[1] };
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "bb-axi-home-"));
+    process.env["HOME"] = home;
+  });
+  afterEach(() => {
+    process.env["HOME"] = saved.home;
+    process.argv[1] = saved.argv1!;
+  });
+
+  it("fails instead of claiming success when nothing was written", async () => {
+    // Under vitest argv[1] is not a bb-axi binary, so the SDK skips the install.
+    const { stdout, exitCode } = await run("setup", "hooks");
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("no hooks were installed");
+    expect(stdout).toContain("code: SETUP_FAILED");
+  });
+
+  it("reports installed agents and fails on a partial install", async () => {
+    const bin = join(home, "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "bb-axi"), "");
+    process.argv[1] = join(bin, "bb-axi");
+    writeFileSync(join(home, ".codex"), "not a directory");
+    const partial = await run("setup", "hooks");
+    expect(partial.exitCode).not.toBe(0);
+    expect(partial.stdout).toContain("hooks only partly installed (installed: Claude Code; OpenCode)");
+    expect(partial.stdout).toContain(".codex");
+
+    const status = await run("setup", "status");
+    expect(status.stdout).toContain("claude_code: installed");
+    expect(status.stdout).toContain("codex: not installed");
   });
 });
