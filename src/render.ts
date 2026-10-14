@@ -92,11 +92,12 @@ export function duration(seconds: unknown): string {
 }
 
 /** "N of T total" when the backend knows the total, otherwise an honest bound. */
-export function countLine(shown: number, total: number | undefined, more: boolean): string {
+/** Exact counts stay numbers so TOON renders them unquoted. */
+export function countLine(shown: number, total: number | undefined, more: boolean): string | number {
   if (total !== undefined && total >= shown) {
-    return total === shown ? `${shown}` : `${shown} of ${total} total`;
+    return total === shown ? shown : `${shown} of ${total} total`;
   }
-  return more ? `${shown}+ (more available)` : `${shown}`;
+  return more ? `${shown}+ (more available)` : shown;
 }
 
 // --- loose JSON accessors: API payloads are untyped, keep narrowing in one place ---

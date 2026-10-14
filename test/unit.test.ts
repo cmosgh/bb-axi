@@ -237,7 +237,7 @@ describe("render helpers", () => {
   });
 
   it("formats counts and relative times", () => {
-    expect(countLine(3, 3, false)).toBe("3");
+    expect(countLine(3, 3, false)).toBe(3);
     expect(countLine(3, 40, true)).toBe("3 of 40 total");
     expect(countLine(3, undefined, true)).toBe("3+ (more available)");
     const now = Date.parse("2026-01-10T00:00:00Z");
