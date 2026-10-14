@@ -7,7 +7,7 @@ import { block, helpBlock, out, truncate, type Obj } from "../render.js";
 export const API_HELP = `usage: bb-axi api [GET|POST|PUT|DELETE] <path> [flags]
 Escape hatch for any Bitbucket Cloud REST 2.0 endpoint. {workspace} and {repo} in the path are filled from the repository context. Non-JSON responses (file contents) print between --- fences.
 flags:
-  --query <key=value> (repeatable), --data <json> (request body), --full (do not truncate long strings), --confirm (required for DELETE)
+  --query <key=value> (repeatable), --data <json> (request body), --full (do not truncate long strings), --raw (print the response body as compact JSON, for jq or a read-modify-write), --confirm (required for DELETE)
 global:
   -R/--repo <workspace>/<repo>
 examples[3]:
@@ -54,6 +54,7 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
       { name: "--query", repeatable: true },
       { name: "--data" },
       { name: "--full", boolean: true },
+      { name: "--raw", boolean: true },
       { name: "--confirm", boolean: true },
     ],
     command,
@@ -113,6 +114,7 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
 
   const result = await bbJsonOrText(path, { method, query, body });
   if ("text" in result) {
+    if (bool(parsed, "--raw")) return result.text;
     const text = bool(parsed, "--full") ? { text: result.text, truncated: false } : truncate(result.text, TEXT_LIMIT);
     return out(
       "---",
@@ -122,6 +124,7 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
     );
   }
   const response = result.json;
+  if (bool(parsed, "--raw")) return JSON.stringify(response);
   const stats = { cut: false };
   const shown = bool(parsed, "--full") ? response : shrink(response, stats);
   const payload: Obj =

@@ -449,6 +449,12 @@ describe("api escape hatch", () => {
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 
+  it("--raw prints compact JSON", async () => {
+    mockApi([{ path: `${BASE}/refs/branches`, json: { values: [{ name: "main" }] } }]);
+    const { stdout } = await run("api", "/repositories/{workspace}/{repo}/refs/branches", "--raw", ...REPO);
+    expect(stdout).toBe('{"values":[{"name":"main"}]}\n');
+  });
+
   it("accepts a path without the leading slash and fences non-JSON bodies", async () => {
     mockApi([{ path: `${BASE}/src/abc1234/a.ts`, text: "const a = 1;\n" }]);
     const { stdout, exitCode } = await run("api", "repositories/acme/widgets/src/abc1234/a.ts", ...REPO);
