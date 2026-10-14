@@ -445,6 +445,54 @@ describe("api escape hatch", () => {
     expect(del.stdout).toContain("NOT executed - DELETE needs --confirm");
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
+
+  it("accepts a path without the leading slash and fences non-JSON bodies", async () => {
+    mockApi([{ path: `${BASE}/src/abc1234/a.ts`, text: "const a = 1;\n" }]);
+    const { stdout, exitCode } = await run("api", "repositories/acme/widgets/src/abc1234/a.ts", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("---\nconst a = 1;\n---");
+  });
+
+  it("points slashed branch names at repo file on 'Commit not found'", async () => {
+    mockApi([{ path: /\/src\//, status: 404, json: { error: { message: "Commit not found" } } }]);
+    const { stdout } = await run("api", "/repositories/acme/widgets/src/feat%2Fx/a.ts", ...REPO);
+    expect(stdout).toContain("bb-axi repo file <path> --ref <branch>");
+  });
+});
+
+describe("repo file", () => {
+  it("resolves a slashed branch to its commit and prints the file", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/refs/branches/feature%2Fx`, json: { target: { hash: "c09a654a35c9aaaa" } } },
+      { path: `${BASE}/src/c09a654a35c9aaaa/app/a.ts`, reply: (c) => (c.url.searchParams.get("format") === "meta" ? { json: { type: "commit_file", size: 12 } } : { text: "export {};\n" }) },
+    ]);
+    const { stdout, exitCode } = await run("repo", "file", "/app/a.ts", "--ref", "feature/x", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(calls.some((c) => c.path.includes("feature"))).toBe(true);
+    expect(stdout).toContain("commit: c09a654a35c9");
+    expect(stdout).toContain("---\nexport {};\n---");
+  });
+
+  it("--pr reads the source commit and lists a directory", async () => {
+    mockApi([
+      { path: `${BASE}/pullrequests/15`, json: pr({ id: 15, source: { branch: { name: "feature/x" }, commit: { hash: "abc1234" } } }) },
+      { path: `${BASE}/src/abc1234/app`, json: { type: "commit_directory" } },
+      { path: `${BASE}/src/abc1234/app/`, json: page([{ path: "app/a.ts", type: "commit_file", size: 12 }, { path: "app/lib", type: "commit_directory" }]) },
+    ]);
+    const { stdout } = await run("repo", "file", "app", "--pr", "15", ...REPO);
+    expect(stdout).toContain("ref: pr 15 (feature/x)");
+    expect(stdout).toContain("a.ts,12");
+    expect(stdout).toContain("lib/,dir");
+    expect(stdout).toContain("bb-axi repo file app/<name> --pr 15 -R acme/widgets");
+  });
+
+  it("rejects --ref with --pr before any request", async () => {
+    const { calls } = mockApi([]);
+    const { stdout, exitCode } = await run("repo", "file", "a.ts", "--ref", "main", "--pr", "1", ...REPO);
+    expect(exitCode).toBe(2);
+    expect(stdout).toContain("pass --ref or --pr, not both");
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("pipelines", () => {

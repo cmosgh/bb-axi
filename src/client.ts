@@ -84,6 +84,13 @@ function errorForStatus(status: number, bodyText: string, method: string): AxiEr
           : "The API token is likely missing a write scope (write:pullrequest:bitbucket; write:pipeline:bitbucket for pipeline rerun/stop) or you lack permission on this repository",
       ]);
     case 404:
+      // The src endpoint cannot resolve branch names that contain '/'.
+      if (/commit not found/i.test(message)) {
+        return axiError(`not found${suffix}`, "NOT_FOUND", [
+          "src/ paths need a commit hash when the branch name contains '/'",
+          "Run `bb-axi repo file <path> --ref <branch>` or `bb-axi repo file <path> --pr <id>` - they resolve the commit",
+        ]);
+      }
       return axiError(`not found${suffix}`, "NOT_FOUND", [
         "Check the id and the repository (`-R <workspace>/<repo>`); private repositories also return 404 when the token lacks access",
       ]);
@@ -140,6 +147,18 @@ export async function bbJson(pathOrUrl: string, options: RequestOptions = {}): P
     return JSON.parse(text) as unknown;
   } catch {
     throw axiError("Bitbucket API returned a non-JSON response", "API_ERROR");
+  }
+}
+
+/** JSON when the body parses as JSON, else the raw text (file contents, logs). */
+export async function bbJsonOrText(pathOrUrl: string, options: RequestOptions = {}): Promise<{ json: unknown } | { text: string }> {
+  const response = await send(pathOrUrl, options, "application/json, */*");
+  const text = response.status === 204 ? "" : await response.text();
+  if (text.trim() === "") return { json: {} };
+  try {
+    return { json: JSON.parse(text) as unknown };
+  } catch {
+    return { text };
   }
 }
 

@@ -1,11 +1,11 @@
 import { bool, flag, parseArgs } from "../args.js";
-import { bbJson } from "../client.js";
+import { bbJsonOrText } from "../client.js";
 import type { RepoContext } from "../context.js";
 import { axiError, usageError } from "../errors.js";
-import { block, helpBlock, out, type Obj } from "../render.js";
+import { block, helpBlock, out, truncate, type Obj } from "../render.js";
 
 export const API_HELP = `usage: bb-axi api [GET|POST|PUT|DELETE] <path> [flags]
-Escape hatch for any Bitbucket Cloud REST 2.0 endpoint. {workspace} and {repo} in the path are filled from the repository context.
+Escape hatch for any Bitbucket Cloud REST 2.0 endpoint. {workspace} and {repo} in the path are filled from the repository context. Non-JSON responses (file contents) print between --- fences.
 flags:
   --query <key=value> (repeatable), --data <json> (request body), --full (do not truncate long strings), --confirm (required for DELETE)
 global:
@@ -20,6 +20,7 @@ const METHODS = ["GET", "POST", "PUT", "DELETE"] as const;
 type Method = (typeof METHODS)[number];
 const STRING_LIMIT = 300;
 const ARRAY_LIMIT = 50;
+const TEXT_LIMIT = 20_000;
 
 /** Raw API payloads are verbose; cap strings and arrays unless --full. */
 function shrink(value: unknown, stats: { cut: boolean }): unknown {
@@ -80,9 +81,10 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
       .replaceAll("{workspace}", encodeURIComponent(ctx.workspace))
       .replaceAll("{repo}", encodeURIComponent(ctx.repo));
   }
-  if (!path.startsWith("/") || path.includes("://")) {
-    throw usageError("path must start with / and be relative to https://api.bitbucket.org/2.0", [`usage: ${usage}`]);
+  if (path.includes("://")) {
+    throw usageError("path must be relative to https://api.bitbucket.org/2.0", [`usage: ${usage}`]);
   }
+  if (!path.startsWith("/")) path = `/${path}`;
 
   const query: Record<string, string> = {};
   for (const pair of parsed.values.get("--query") ?? []) {
@@ -109,7 +111,17 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
     );
   }
 
-  const response = await bbJson(path, { method, query, body });
+  const result = await bbJsonOrText(path, { method, query, body });
+  if ("text" in result) {
+    const text = bool(parsed, "--full") ? { text: result.text, truncated: false } : truncate(result.text, TEXT_LIMIT);
+    return out(
+      "---",
+      text.text.trimEnd(),
+      "---",
+      helpBlock(text.truncated ? [`Add \`--full\` for the whole response`] : []),
+    );
+  }
+  const response = result.json;
   const stats = { cut: false };
   const shown = bool(parsed, "--full") ? response : shrink(response, stats);
   const payload: Obj =
