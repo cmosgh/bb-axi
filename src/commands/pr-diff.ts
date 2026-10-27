@@ -3,7 +3,7 @@ import { bbPaginate, bbText } from "../client.js";
 import { repoHint, type RepoContext } from "../context.js";
 import { matchesPath, selectDiff } from "../diff.js";
 import { prPath } from "../pr-api.js";
-import { block, dig, helpBlock, num, obj, out, str } from "../render.js";
+import { block, dig, fenced, helpBlock, num, obj, out, str } from "../render.js";
 
 /** ~8-10k tokens: enough for most PRs in one call without flooding context. */
 const DIFF_BUDGET_CHARS = 32_000;
@@ -113,16 +113,14 @@ export async function prDiff(args: string[], ctx: RepoContext): Promise<string> 
   }
 
   const legend = bool(parsed, "--raw")
-    ? "diff: unified"
-    : 'diff: annotated - leading number is the NEW file line, except on "-" lines where it is the OLD file line';
+    ? "unified"
+    : "annotated - leading number is the NEW file line, except on '-' lines where it is the OLD file line";
   const body = selection.body === "" ? "(no textual diff for the selected files)" : selection.body;
 
   return out(
     header,
-    legend,
-    "---",
-    body,
-    "---",
+    block({ diff: legend }),
+    fenced("patch", body),
     Object.keys(notes).length > 0 ? block(notes) : "",
     helpBlock(help),
   );

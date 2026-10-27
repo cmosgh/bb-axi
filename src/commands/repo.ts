@@ -3,7 +3,7 @@ import { bbJson, bbPaginate, bbText } from "../client.js";
 import { repoHint, repoPath, requireRepo, type RepoContext } from "../context.js";
 import { AxiError, axiError, usageError } from "../errors.js";
 import { fetchPr } from "../pr-api.js";
-import { block, countLine, dig, helpBlock, num, obj, out, relTime, str, truncate } from "../render.js";
+import { block, countLine, dig, fenced, helpBlock, num, obj, out, relTime, str, truncate } from "../render.js";
 
 export const REPO_HELP = `usage: bb-axi repo <subcommand> [flags]
 subcommands[3]:
@@ -146,9 +146,7 @@ async function repoFile(args: string[], ctx: RepoContext): Promise<string> {
   const text = bool(parsed, "--full") ? { text: content, truncated: false } : truncate(content, FILE_LIMIT);
   return out(
     block({ file: path, ref: label, commit: short, lines: content.trimEnd().split("\n").length }),
-    "---",
-    text.text.trimEnd() || "(empty file)",
-    "---",
+    fenced("content", text.text.trimEnd() || "(empty file)"),
     helpBlock(text.truncated ? [`Run \`${command} ${path} --full${refArgs}\` for the whole file`] : []),
   );
 }

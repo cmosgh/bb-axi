@@ -2,7 +2,7 @@ import { bool, expectPositionals, flag, intFlag, parseArgs, parseFields, positiv
 import { bbJson, bbPaginate, bbText } from "../client.js";
 import { repoHint, repoPath, requireRepo, type RepoContext } from "../context.js";
 import { axiError, AxiError, usageError } from "../errors.js";
-import { block, countLine, dig, duration, helpBlock, num, obj, out, relTime, str, truncateTail, type Obj } from "../render.js";
+import { block, countLine, dig, duration, fenced, helpBlock, num, obj, out, relTime, str, truncateTail, type Obj } from "../render.js";
 
 export const PIPELINE_HELP = `usage: bb-axi pipeline <subcommand> [args] [flags]
 subcommands[5]:
@@ -380,9 +380,7 @@ async function pipelineLog(args: string[], ctx: RepoContext): Promise<string> {
       status: pipelineStatus(step),
       chars: log.length,
     }),
-    "---",
-    text.text.trimEnd() || "(empty log)",
-    "---",
+    fenced("log", text.text.trimEnd() || "(empty log)"),
     helpBlock(text.truncated ? [`Run \`bb-axi pipeline log ${build} --step ${index + 1} --full${hint}\` for the whole log`] : []),
   );
 }

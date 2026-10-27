@@ -8,7 +8,7 @@ import { repoCommand, REPO_HELP } from "./commands/repo.js";
 import { setupCommand, SETUP_HELP } from "./commands/setup.js";
 import { resolveRepo, splitRepoFlag, type RepoContext } from "./context.js";
 import { AxiError, exitCodeForError } from "./errors.js";
-import { renderErrorOutput } from "./render.js";
+import { renderErrorOutput, setJsonMode, toJson } from "./render.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
@@ -17,8 +17,8 @@ export const DESCRIPTION =
 export const TOP_HELP = `usage: bb-axi [command] [args] [flags]
 commands[7]:
   (none)=review dashboard, pr, pipeline, repo, api, auth, setup
-flags[3]:
-  -R/--repo <workspace>/<repo> (after the command; default: bitbucket.org remote of the current checkout, or BB_AXI_REPO), --help, -v/-V/--version
+flags[4]:
+  -R/--repo <workspace>/<repo> (after the command; default: bitbucket.org remote of the current checkout, or BB_AXI_REPO), --json (JSON instead of TOON, for scripts), --help, -v/-V/--version
 examples:
   bb-axi
   bb-axi pr list --reviewing
@@ -71,9 +71,15 @@ export interface MainOptions {
 }
 
 export async function main(options: MainOptions = {}): Promise<void> {
+  // Stripped here: the SDK rejects flags before the command, and --json may stand anywhere.
+  const argv = options.argv ?? process.argv.slice(2);
+  const json = argv.includes("--json");
+  setJsonMode(json);
+  const stdout = options.stdout ?? process.stdout;
+  let buffered = "";
   await runAxiCli({
-    ...(options.argv ? { argv: options.argv } : {}),
-    ...(options.stdout ? { stdout: options.stdout } : {}),
+    argv: json ? argv.filter((a) => a !== "--json") : argv,
+    stdout: json ? { write: (chunk: string) => (buffered += chunk) } : stdout,
     description: DESCRIPTION,
     version: VERSION,
     topLevelHelp: TOP_HELP,
@@ -94,4 +100,8 @@ export async function main(options: MainOptions = {}): Promise<void> {
       ])}\n`,
     formatError,
   });
+  if (!json) return;
+  // The SDK only guards the stdout it writes to: `--json | head` must not crash on EPIPE either.
+  if (stdout === process.stdout) process.stdout.on("error", (error: NodeJS.ErrnoException) => { if (error.code !== "EPIPE") throw error; });
+  stdout.write(toJson(buffered));
 }

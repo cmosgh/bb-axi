@@ -1,7 +1,9 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { decode } from "@toon-format/toon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { helpBlock } from "../src/render.js";
 import { ANA, BASE, BOB, ME, mockApi, pr, REPO, run, useTestEnv } from "./helpers.js";
 
 beforeEach(() => useTestEnv());
@@ -731,5 +733,87 @@ describe("setup hooks", () => {
     const status = await run("setup", "status");
     expect(status.stdout).toContain("claude_code: installed");
     expect(status.stdout).toContain("codex: not installed");
+  });
+});
+
+describe("machine-readable output", () => {
+  const PIPELINE = {
+    uuid: "{pipe-1}",
+    build_number: 1284,
+    state: { name: "COMPLETED", result: { name: "FAILED" } },
+    target: { ref_name: "develop", commit: { hash: "0123456789abcdef" } },
+    created_on: new Date(Date.now() - 3_600_000).toISOString(),
+  };
+  const STEPS = page([{ uuid: "{s1}", name: "test", state: { name: "COMPLETED", result: { name: "FAILED" } } }]);
+  const json = async (...argv: string[]) => {
+    const { stdout, exitCode } = await run(...argv, "--json");
+    return { value: JSON.parse(stdout) as Record<string, any>, exitCode };
+  };
+
+  // run() already asserts strict TOON for each of these; they have no other test.
+  it("commands without their own test still decode as TOON", async () => {
+    mockApi([
+      { path: BASE, json: { slug: "widgets", is_private: true, mainbranch: { name: "main" }, description: "Widget service: v2, with \"quotes\"" } },
+      { path: "/repositories/acme", json: page([{ slug: "widgets", project: { key: "WID" } }]) },
+      { path: `${BASE}/pipelines`, json: page([PIPELINE]) },
+      { path: `${BASE}/pipelines/%7Bpipe-1%7D/steps`, json: STEPS },
+      { path: `${BASE}/pullrequests/42`, json: pr() },
+      { method: "POST", path: `${BASE}/pullrequests/42/request-changes`, json: {} },
+    ]);
+    for (const argv of [["repo", "view"], ["repo", "list"], ["pipeline", "view", "1284"], ["pr", "unapprove", "42"], ["pr", "request-changes", "42"], ["pr", "decline", "42"]]) {
+      expect((await run(...argv, ...REPO)).exitCode, argv.join(" ")).toBe(0);
+    }
+    expect((await run("auth", "status")).exitCode).toBe(0);
+  });
+
+  it("--json decodes the same object TOON shows", async () => {
+    mockApi([{ path: `${BASE}/pullrequests`, json: page([pr()]) }]);
+    const toon = await run("pr", "list", ...REPO);
+    expect((await json("pr", "list", ...REPO)).value).toEqual(decode(toon.stdout, { strict: true }));
+  });
+
+  it("--json carries fenced raw text as string fields", async () => {
+    mockApi([
+      { path: `${BASE}/pullrequests/42/diffstat`, json: DIFFSTAT },
+      { path: `${BASE}/pullrequests/42/diff`, text: DIFF },
+      { path: `${BASE}/pipelines`, json: page([PIPELINE]) },
+      { path: `${BASE}/pipelines/%7Bpipe-1%7D/steps`, json: STEPS },
+      { path: `${BASE}/pipelines/%7Bpipe-1%7D/steps/%7Bs1%7D/log`, text: "boot\nAssertionError: expected 1 to be 2\n" },
+      { path: `${BASE}/src/abc1234/a.ts`, reply: (c) => (c.url.searchParams.get("format") === "meta" ? { json: { type: "commit_file", size: 12 } } : { text: "export {};\n" }) },
+    ]);
+    const diff = (await json("pr", "diff", "42", ...REPO)).value;
+    expect(diff["patch"]).toContain("   1 +const a = 2;");
+    expect(diff["diff"]).toMatch(/^annotated/);
+    expect(diff["files"][0]).toMatchObject({ path: "src/a.ts", status: "modified" });
+    expect((await json("pipeline", "log", "1284", ...REPO)).value).toMatchObject({ build: 1284, log: "boot\nAssertionError: expected 1 to be 2" });
+    expect((await json("repo", "file", "a.ts", "--ref", "abc1234", ...REPO)).value["content"]).toBe("export {};");
+    expect((await json("api", "/repositories/acme/widgets/src/abc1234/a.ts", ...REPO)).value["body"]).toBe("export {};");
+  });
+
+  it("--json keeps errors structured and the exit code", async () => {
+    mockApi([]);
+    const { value, exitCode } = await json("pr", "view", "x", ...REPO);
+    expect(exitCode).toBe(2);
+    expect(value).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(Array.isArray(value["help"] ?? [])).toBe(true);
+  });
+
+  it("--json works before the command and on the home view", async () => {
+    const cwd = process.cwd();
+    process.chdir("/");
+    try {
+      const { stdout } = await run("--json");
+      expect(JSON.parse(stdout)).toMatchObject({ repo: "none - not inside a Bitbucket checkout", help: [expect.stringContaining("pr list")] });
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it("help lines that look like key: value stay strings", async () => {
+    expect(decode(helpBlock(["Run `x` to see: a,b", "42", 'say "hi"']), { strict: true })).toEqual({ help: ["Run `x` to see: a,b", "42", 'say "hi"'] });
+  });
+
+  it("--json wraps help pages that are not TOON", async () => {
+    expect(JSON.parse((await run("--help", "--json")).stdout)["text"]).toContain("usage: bb-axi");
   });
 });

@@ -91,6 +91,12 @@ The repository comes from the `bitbucket.org` remote of the current checkout; ov
 
 `bb-axi <command> --help` prints a concise, complete flag reference.
 
+Output is strict [TOON](https://toonformat.dev/) apart from raw text (diffs, logs, files) between `---` fences. For scripts, `--json` anywhere on the line prints the same payload as JSON, with raw text as a string field (`patch`, `log`, `content`, `body`); errors keep their exit code:
+
+```sh
+bb-axi pr list --reviewing --json | jq -r '.prs[]?.id'
+```
+
 ### A review, end to end
 
 ```sh

@@ -2,7 +2,7 @@ import { bool, flag, parseArgs } from "../args.js";
 import { bbJsonOrText } from "../client.js";
 import type { RepoContext } from "../context.js";
 import { axiError, usageError } from "../errors.js";
-import { block, helpBlock, out, truncate, type Obj } from "../render.js";
+import { block, fenced, helpBlock, out, truncate, type Obj } from "../render.js";
 
 export const API_HELP = `usage: bb-axi api [GET|POST|PUT|DELETE] <path> [flags]
 Escape hatch for any Bitbucket Cloud REST 2.0 endpoint. {workspace} and {repo} in the path are filled from the repository context. Non-JSON responses (file contents) print between --- fences.
@@ -117,9 +117,7 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
     if (bool(parsed, "--raw")) return result.text;
     const text = bool(parsed, "--full") ? { text: result.text, truncated: false } : truncate(result.text, TEXT_LIMIT);
     return out(
-      "---",
-      text.text.trimEnd(),
-      "---",
+      fenced("body", text.text.trimEnd()),
       helpBlock(text.truncated ? [`Add \`--full\` for the whole response`] : []),
     );
   }

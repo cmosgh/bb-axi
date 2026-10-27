@@ -3,7 +3,8 @@
 AXI-compliant Bitbucket Cloud CLI. Read the AXI principles (https://axi.md) before changing output.
 
 - **Output is the product.** Every stdout byte costs tokens. Default list schemas stay at 3-5 fields; extras go behind `--fields`. Avoid commas, colons and double quotes inside TOON string values - they force quoting/escaping (use `;`, ` - `, single quotes).
-- **Handlers return strings** built with `block()` (TOON), `helpBlock()` (one suggestion per line) and `out()` from `src/render.ts`. Raw text (diffs, logs) goes between `---` fences, never inside a TOON string.
+- **Handlers return strings** built with `block()` (TOON), `helpBlock()` (one suggestion per line) and `out()` from `src/render.ts`. Raw text (diffs, logs) goes through `fenced(key, text)`: `---` fences in TOON, the string field `key` under `--json`. Never print raw text any other way.
+- **Output decodes.** Apart from fences, stdout is strict TOON with unique top-level keys; `--json` prints the decoded payload. `run()` in `test/helpers.ts` asserts both for every command a test runs.
 - **Every flag is declared.** `parseArgs()` in `src/args.ts` rejects unknown flags with the valid set inline. Validate all input before the first network call; usage errors are `VALIDATION_ERROR` (exit 2).
 - **Mutations are idempotent** (pre-check state, report `(no-op)`, exit 0) and irreversible ones need `--confirm`, previewing otherwise.
 - **Suggestions carry context**: append `repoHint(ctx)` so an explicit `-R` survives into the next command; use `<placeholders>` for runtime values.
