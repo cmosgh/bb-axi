@@ -457,6 +457,13 @@ describe("api escape hatch", () => {
     expect(stdout).toBe('{"values":[{"name":"main"}]}\n');
   });
 
+  it("--raw --json passes the response through unchanged", async () => {
+    const body = { values: [{ name: "main", note: "a: b, c" }], size: 1 };
+    mockApi([{ path: `${BASE}/refs/branches`, json: body }]);
+    const { stdout } = await run("api", "/repositories/{workspace}/{repo}/refs/branches", "--raw", "--json", ...REPO);
+    expect(JSON.parse(stdout)).toEqual(body);
+  });
+
   it("accepts a path without the leading slash and fences non-JSON bodies", async () => {
     mockApi([{ path: `${BASE}/src/abc1234/a.ts`, text: "const a = 1;\n" }]);
     const { stdout, exitCode } = await run("api", "repositories/acme/widgets/src/abc1234/a.ts", ...REPO);

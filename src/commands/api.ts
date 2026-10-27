@@ -1,8 +1,9 @@
+import { encode } from "@toon-format/toon";
 import { bool, flag, parseArgs } from "../args.js";
 import { bbJsonOrText } from "../client.js";
 import type { RepoContext } from "../context.js";
 import { axiError, usageError } from "../errors.js";
-import { block, fenced, helpBlock, out, truncate, type Obj } from "../render.js";
+import { block, fenced, helpBlock, isJsonMode, out, truncate, type Obj } from "../render.js";
 
 export const API_HELP = `usage: bb-axi api [GET|POST|PUT|DELETE] <path> [flags]
 Escape hatch for any Bitbucket Cloud REST 2.0 endpoint. {workspace} and {repo} in the path are filled from the repository context. Non-JSON responses (file contents) print between --- fences.
@@ -122,7 +123,8 @@ export async function apiCommand(args: string[], ctx?: RepoContext): Promise<str
     );
   }
   const response = result.json;
-  if (bool(parsed, "--raw")) return JSON.stringify(response);
+  // --raw is already JSON; under --json it must survive the TOON decode in toJson() unchanged.
+  if (bool(parsed, "--raw")) return isJsonMode() ? encode(response) : JSON.stringify(response);
   const stats = { cut: false };
   const shown = bool(parsed, "--full") ? response : shrink(response, stats);
   const payload: Obj =

@@ -14,6 +14,10 @@ export function setJsonMode(on: boolean): void {
   jsonMode = on;
 }
 
+export function isJsonMode(): boolean {
+  return jsonMode;
+}
+
 /**
  * Render next-step suggestions one per line. `encode()` would inline a
  * primitive array as a single comma-joined (and quoted) line, which is harder
