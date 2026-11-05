@@ -743,6 +743,16 @@ describe("setup hooks", () => {
     expect(status.stdout).toContain("cursor: installed");
   });
 
+  it("installs all four agents when run as the built dist entrypoint", async () => {
+    const dist = join(home, "bb-axi", "dist", "bin");
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, "bb-axi.js"), "");
+    process.argv[1] = join(dist, "bb-axi.js");
+    const { stdout, exitCode } = await run("setup", "hooks");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("integrations: Claude Code; Codex; OpenCode; Cursor");
+  });
+
   it("adds a Cursor sessionStart entry next to existing hooks and removes only its own", async () => {
     const bin = join(home, "node_modules", ".bin");
     mkdirSync(bin, { recursive: true });
