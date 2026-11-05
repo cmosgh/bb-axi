@@ -158,6 +158,16 @@ Bitbucket **Cloud** only (REST API 2.0). Bitbucket Data Center / Server has a di
 
 Not affiliated with or endorsed by Atlassian. Bitbucket is a trademark of Atlassian.
 
+<!-- axi-tools:start -->
+## Other AXI tools
+
+- [`atl-axi`](https://github.com/cmosgh/atl-axi): Atlassian Jira Cloud CLI for agents
+- [`hetzner-axi`](https://github.com/cmosgh/hetzner-axi): Hetzner Cloud CLI for agents
+- [`mongo-axi`](https://github.com/cmosgh/mongo-axi): Read-only MongoDB CLI for agents, plus `mongo-rw-axi` (write-capable MongoDB CLI for agents, loopback hosts only)
+- [`mysql-axi`](https://github.com/cmosgh/mysql-axi): Read-only MySQL CLI for agents, plus `mysql-rw-axi` (write-capable MySQL CLI for agents, loopback hosts only)
+- [`ts-axi`](https://github.com/cmosgh/ts-axi): TypeScript symbol CLI for agents
+<!-- axi-tools:end -->
+
 ## License
 
 MIT
