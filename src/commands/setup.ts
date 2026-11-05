@@ -39,7 +39,8 @@ examples[3]:
   bb-axi setup status
 `;
 
-const IDENTITY = { marker: "bb-axi", binaryNames: ["bb-axi"] };
+// distEntrypoints: `node dist/bin/bb-axi.js setup hooks` must install Cursor too, not only the npm shim.
+const IDENTITY = { marker: "bb-axi", binaryNames: ["bb-axi"], distEntrypoints: ["dist/bin/bb-axi.js"] };
 
 export async function setupCommand(args: string[]): Promise<string> {
   const [sub, ...rest] = args;
