@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bool, flag, flags, parseArgs, parseFields, positiveId } from "../src/args.js";
 import { parseRemoteUrl, splitRepoFlag } from "../src/context.js";
+import { cursorWorkspaceRoot } from "../src/cursor.js";
 import { annotate, isNoiseFile, matchesPath, selectDiff, splitFiles } from "../src/diff.js";
 import { buildsSummary, commentLocation, reviewSummary, reviewers } from "../src/pr-model.js";
 import { countLine, relTime, truncate, truncateTail } from "../src/render.js";
@@ -251,5 +252,15 @@ describe("version fast path", () => {
     const source = readFileSync(new URL("../src/version.ts", import.meta.url), "utf-8");
     const imports = [...source.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
     expect(imports.every((specifier) => specifier?.startsWith("node:"))).toBe(true);
+  });
+});
+
+describe("cursorWorkspaceRoot", () => {
+  it("prefers CURSOR_PROJECT_DIR, then the first workspace root from the hook input", () => {
+    const input = () => JSON.stringify({ hook_event_name: "sessionStart", workspace_roots: ["/w/one", "/w/two"] });
+    expect(cursorWorkspaceRoot({ CURSOR_PROJECT_DIR: "/w/env" }, input)).toBe("/w/env");
+    expect(cursorWorkspaceRoot({}, input)).toBe("/w/one");
+    expect(cursorWorkspaceRoot({}, () => "")).toBeUndefined();
+    expect(cursorWorkspaceRoot({}, () => "not json")).toBeUndefined();
   });
 });

@@ -46,7 +46,7 @@ Use `bb-axi` for anything on Bitbucket (pull requests, review comments, pipeline
 Or install one of the two integrations (you only need one):
 
 ```sh
-bb-axi setup hooks                      # SessionStart hook: review dashboard as ambient context (Claude Code, Codex, OpenCode)
+bb-axi setup hooks                      # SessionStart hook: review dashboard as ambient context (Claude Code, Codex, OpenCode, Cursor)
 npx skills add cmosgh/bb-axi --skill bb-axi   # on-demand Agent Skill, no per-session cost
 ```
 

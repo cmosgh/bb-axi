@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decode } from "@toon-format/toon";
@@ -734,12 +734,61 @@ describe("setup hooks", () => {
     writeFileSync(join(home, ".codex"), "not a directory");
     const partial = await run("setup", "hooks");
     expect(partial.exitCode).not.toBe(0);
-    expect(partial.stdout).toContain("hooks only partly installed (installed: Claude Code; OpenCode)");
+    expect(partial.stdout).toContain("hooks only partly installed (installed: Claude Code; OpenCode; Cursor)");
     expect(partial.stdout).toContain(".codex");
 
     const status = await run("setup", "status");
     expect(status.stdout).toContain("claude_code: installed");
     expect(status.stdout).toContain("codex: not installed");
+    expect(status.stdout).toContain("cursor: installed");
+  });
+
+  it("adds a Cursor sessionStart entry next to existing hooks and removes only its own", async () => {
+    const bin = join(home, "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "bb-axi"), "");
+    process.argv[1] = join(bin, "bb-axi");
+    const hooksFile = join(home, ".cursor", "hooks.json");
+    mkdirSync(join(home, ".cursor"));
+    writeFileSync(hooksFile, JSON.stringify({ version: 1, hooks: { sessionStart: [{ command: "./other.sh" }], stop: [{ command: "./stop.sh" }] } }));
+
+    const { stdout, exitCode } = await run("setup", "hooks");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("integrations: Claude Code; Codex; OpenCode; Cursor");
+    const installed = JSON.parse(readFileSync(hooksFile, "utf-8"));
+    expect(installed.hooks.sessionStart).toEqual([{ command: "./other.sh" }, { command: `${join(bin, "bb-axi")} setup cursor-hook`, timeout: 15 }]);
+    expect(installed.hooks.stop).toEqual([{ command: "./stop.sh" }]);
+    expect((await run("setup", "hooks")).exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(hooksFile, "utf-8")).hooks.sessionStart).toHaveLength(2);
+
+    expect((await run("setup", "uninstall")).exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(hooksFile, "utf-8")).hooks).toEqual({ sessionStart: [{ command: "./other.sh" }], stop: [{ command: "./stop.sh" }] });
+  });
+});
+
+describe("setup cursor-hook", () => {
+  const cwd = process.cwd();
+  afterEach(() => {
+    process.chdir(cwd);
+    delete process.env["CURSOR_PROJECT_DIR"];
+  });
+
+  it("prints the dashboard of the opened workspace as Cursor's additional_context", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "bb-axi-ws-"));
+    process.env["CURSOR_PROJECT_DIR"] = workspace;
+    const { stdout, exitCode } = await run("setup", "cursor-hook");
+    expect(exitCode).toBe(0);
+    const context = JSON.parse(stdout).additional_context as string;
+    expect(context).toContain("not inside a Bitbucket checkout");
+    expect(process.cwd()).toBe(realpathSync(workspace));
+  });
+
+  it("includes open pull requests when the workspace is a Bitbucket repository", async () => {
+    process.env["CURSOR_PROJECT_DIR"] = cwd;
+    process.env["BB_AXI_REPO"] = "acme/widgets";
+    mockApi([{ path: `${BASE}/pullrequests`, json: page([pr()]) }]);
+    const { stdout } = await run("setup", "cursor-hook");
+    expect(JSON.parse(stdout).additional_context).toContain("Add retry to the sync worker");
   });
 });
 
