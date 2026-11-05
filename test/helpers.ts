@@ -82,9 +82,10 @@ export async function run(...argv: string[]): Promise<{ stdout: string; exitCode
   return { stdout, exitCode };
 }
 
-/** Every payload is strict TOON, except help pages and fenced raw text; --json is always JSON. */
+/** Every payload is strict TOON, except help pages and fenced raw text; --json and cursor-hook are always JSON. */
 function assertDecodes(argv: string[], stdout: string): void {
-  if (argv.includes("--json")) {
+  // `setup cursor-hook` speaks Cursor's hook contract, which is always JSON.
+  if (argv.includes("--json") || (argv[0] === "setup" && argv[1] === "cursor-hook")) {
     expect(() => JSON.parse(stdout), stdout).not.toThrow();
     return;
   }
