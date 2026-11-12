@@ -9,11 +9,22 @@ export interface CachedUser {
   email: string;
 }
 
-/** Non-secret settings only. Tokens live in the OS keychain, never here. */
-export interface Config {
-  email?: string;
+/** One Atlassian account. The token lives in the OS keychain under the profile name, never here. */
+export interface Profile {
+  email: string;
   user?: CachedUser;
 }
+
+/** Non-secret settings only. */
+export interface Config {
+  active?: string;
+  profiles?: Record<string, Profile>;
+  /** Identity of the BITBUCKET_EMAIL environment credentials. */
+  user?: CachedUser;
+}
+
+/** Name a pre-profile login is read as; its token stays under the email in the keychain. */
+export const LEGACY_PROFILE = "default";
 
 export function configDir(): string {
   const override = process.env["BB_AXI_CONFIG_DIR"];
@@ -31,7 +42,17 @@ export function readConfig(): Config {
   if (!existsSync(path)) return {};
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-    return parsed !== null && typeof parsed === "object" ? (parsed as Config) : {};
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const raw = parsed as Config & { email?: unknown; user?: CachedUser };
+    // 0.1.x stored one account at the top level.
+    if (typeof raw.email === "string" && raw.profiles === undefined) {
+      return { active: LEGACY_PROFILE, profiles: { [LEGACY_PROFILE]: { email: raw.email, ...(raw.user ? { user: raw.user } : {}) } } };
+    }
+    return {
+      ...(typeof raw.active === "string" ? { active: raw.active } : {}),
+      ...(raw.profiles && typeof raw.profiles === "object" ? { profiles: raw.profiles } : {}),
+      ...(raw.user ? { user: raw.user } : {}),
+    };
   } catch {
     // A corrupt config must not brick the CLI; treat it as empty.
     return {};
@@ -41,4 +62,8 @@ export function readConfig(): Config {
 export function writeConfig(config: Config): void {
   mkdirSync(configDir(), { recursive: true, mode: 0o700 });
   writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function validProfileName(name: string): boolean {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(name);
 }

@@ -1,6 +1,6 @@
 import { bbPaginate } from "../client.js";
 import { repoHint, repoPath, type RepoContext } from "../context.js";
-import { resolveCredentials } from "../credentials.js";
+import { LOGIN_HINT, resolveCredentials } from "../credentials.js";
 import { AxiError } from "../errors.js";
 import { currentUser } from "../me.js";
 import { authorName, isAuthor, myReviewStatus, PR_LIST_FIELDS, reviewSummary } from "../pr-model.js";
@@ -25,7 +25,7 @@ export async function homeCommand(_args: string[], ctx?: RepoContext): Promise<s
   if (!credentials) {
     return out(
       block({ repo: ctx.slug, auth: "not authenticated" }),
-      helpBlock(["Run `<token-command> | bb-axi auth login --email <atlassian-email> --token-stdin`"]),
+      helpBlock([LOGIN_HINT]),
     );
   }
 

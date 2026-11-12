@@ -7,6 +7,7 @@ import { prCommand, PR_HELP } from "./commands/pr.js";
 import { repoCommand, REPO_HELP } from "./commands/repo.js";
 import { setupCommand, SETUP_HELP } from "./commands/setup.js";
 import { resolveRepo, splitRepoFlag, type RepoContext } from "./context.js";
+import { setProfileFlag } from "./credentials.js";
 import { AxiError, exitCodeForError } from "./errors.js";
 import { renderErrorOutput, setJsonMode, toJson } from "./render.js";
 import { VERSION } from "./version.js";
@@ -17,8 +18,8 @@ export const DESCRIPTION =
 export const TOP_HELP = `usage: bb-axi [command] [args] [flags]
 commands[7]:
   (none)=review dashboard, pr, pipeline, repo, api, auth, setup
-flags[4]:
-  -R/--repo <workspace>/<repo> (after the command; default: bitbucket.org remote of the current checkout, or BB_AXI_REPO), --json (JSON instead of TOON, for scripts), --help, -v/-V/--version
+flags[5]:
+  -R/--repo <workspace>/<repo> (after the command; default: bitbucket.org remote of the current checkout, or BB_AXI_REPO), -p/--profile <name> (after the command; default: BB_AXI_PROFILE or the active profile - see auth --help), --json (JSON instead of TOON, for scripts), --help, -v/-V/--version
 examples:
   bb-axi
   bb-axi pr list --reviewing
@@ -44,8 +45,10 @@ type Handler = (args: string[], ctx?: RepoContext) => Promise<string>;
 function withRepo(name: string | undefined, handler: Handler): (args: string[]) => Promise<string> {
   return async (args) => {
     if (name && args.includes("-h")) return (COMMAND_HELP[name] ?? "").trimEnd();
-    const { repoFlag, rest } = splitRepoFlag(args);
-    return handler(rest, resolveRepo(repoFlag));
+    const { repoFlag, profileFlag, rest } = splitRepoFlag(args);
+    setProfileFlag(profileFlag);
+    const ctx = resolveRepo(repoFlag);
+    return handler(rest, ctx && profileFlag ? { ...ctx, profile: profileFlag } : ctx);
   };
 }
 

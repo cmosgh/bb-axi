@@ -8,6 +8,8 @@ export interface RepoContext {
   slug: string;
   /** How the repo was resolved; flag/env sources are carried into suggestions. */
   source: "flag" | "env" | "git";
+  /** Explicit -p/--profile, carried into suggestions like -R. */
+  profile?: string;
 }
 
 function parseSlug(value: string, source: "flag" | "env"): RepoContext {
@@ -82,7 +84,7 @@ export function repoPath(ctx: RepoContext): string {
 
 /** Suffix for suggested commands so they keep targeting an explicit repo. */
 export function repoHint(ctx: RepoContext | undefined): string {
-  return ctx && ctx.source === "flag" ? ` -R ${ctx.slug}` : "";
+  return `${ctx && ctx.source === "flag" ? ` -R ${ctx.slug}` : ""}${ctx?.profile ? ` -p ${ctx.profile}` : ""}`;
 }
 
 export function currentBranch(): string | undefined {
@@ -98,10 +100,11 @@ export function currentBranch(): string | undefined {
   }
 }
 
-/** Split `-R/--repo` out of the args so command parsers never see it. */
-export function splitRepoFlag(args: string[]): { repoFlag: string | undefined; rest: string[] } {
+/** Split `-R/--repo` and `-p/--profile` out of the args so command parsers never see them. */
+export function splitRepoFlag(args: string[]): { repoFlag: string | undefined; profileFlag: string | undefined; rest: string[] } {
   const rest: string[] = [];
   let repoFlag: string | undefined;
+  let profileFlag: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const token = args[i]!;
     if (token === "--") {
@@ -121,7 +124,20 @@ export function splitRepoFlag(args: string[]): { repoFlag: string | undefined; r
       repoFlag = token.slice(token.indexOf("=") + 1);
       continue;
     }
+    if (token === "-p" || token === "--profile") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("-")) {
+        throw usageError(`${token} requires a value`, ["-p <profile>"]);
+      }
+      profileFlag = value;
+      i++;
+      continue;
+    }
+    if (token.startsWith("--profile=")) {
+      profileFlag = token.slice("--profile=".length);
+      continue;
+    }
     rest.push(token);
   }
-  return { repoFlag, rest };
+  return { repoFlag, profileFlag, rest };
 }
