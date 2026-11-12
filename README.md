@@ -65,7 +65,8 @@ bb-axi auth status
 
 - The token is read **only from stdin** - never from argv, so it cannot land in shell history or an agent transcript - validated against the API, then stored in the OS keychain (macOS Keychain, Windows Credential Manager, libsecret). `bb-axi` never prompts.
 - Use the **Atlassian account email**, not your Bitbucket username.
-- Environment overrides for CI: `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`, or `BITBUCKET_ACCESS_TOKEN` (workspace / repository / project access token, sent as Bearer). Access tokens are not users, so `--mine`, `--reviewing` and the comment duplicate-guard are unavailable with them.
+- **Profiles** for several accounts: `auth login --profile <name>` stores one token per profile (default profile: `default`) and makes it active. Pick one with `-p/--profile <name>` after any command, `BB_AXI_PROFILE` for a single command, or `bb-axi auth use <name>`; `auth logout --profile <name>` removes one. A login from before profiles keeps working as `default`.
+- Environment overrides for CI: `BITBUCKET_EMAIL` + `BITBUCKET_API_TOKEN`, or `BITBUCKET_ACCESS_TOKEN` (workspace / repository / project access token, sent as Bearer). They win over the profiles unless `-p` is given. Access tokens are not users, so `--mine`, `--reviewing` and the comment duplicate-guard are unavailable with them.
 
 ## Commands
 
@@ -87,7 +88,7 @@ The repository comes from the `bitbucket.org` remote of the current checkout; ov
 | `pipeline rerun <build>` / `stop <build>` | `--confirm` to act, preview otherwise. `rerun` starts a new build of the same commit and pipeline (all steps - the public API has no failed-steps-only rerun); no-op while it or a rerun is still running |
 | `repo view` / `repo list` | Repository details; repositories in a workspace |
 | `api [METHOD] <path>` | Any REST 2.0 endpoint; `{workspace}`/`{repo}` are filled in; `DELETE` needs `--confirm` |
-| `auth status / login / logout`, `setup hooks / status / uninstall`, `update` | Housekeeping |
+| `auth status / login / use / logout`, `setup hooks / status / uninstall`, `update` | Housekeeping |
 
 `bb-axi <command> --help` prints a concise, complete flag reference.
 
@@ -138,7 +139,8 @@ Every step is safe to re-run: a repeated reply is a no-op and resolving a resolv
 | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN` | Basic-auth credentials (override the keychain) |
 | `BITBUCKET_ACCESS_TOKEN` | Bearer access token (overrides everything) |
 | `BB_AXI_REPO` | Default `<workspace>/<repo>` |
-| `BB_AXI_CONFIG_DIR` | Config directory (default `$XDG_CONFIG_HOME/bb-axi` or `~/.config/bb-axi`); holds the email and cached user id, never the token |
+| `BB_AXI_PROFILE` | Profile for a single command (default: the active one) |
+| `BB_AXI_CONFIG_DIR` | Config directory (default `$XDG_CONFIG_HOME/bb-axi` or `~/.config/bb-axi`); holds the profiles (email and cached user id), never the token |
 | `BB_AXI_NO_KEYCHAIN=1` | Never touch the OS keychain |
 | `BB_AXI_API_BASE` | API base URL (tests / proxies) |
 

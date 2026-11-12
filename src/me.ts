@@ -22,9 +22,13 @@ export async function currentUser(options: { timeoutMs?: number } = {}): Promise
   const credentials = await resolveCredentials();
   if (!credentials || credentials.kind !== "basic") return undefined;
 
+  // Cached per profile; environment credentials use the top-level slot.
   const config = readConfig();
-  if (config.user && config.user.email === credentials.email && config.user.uuid) {
-    return { uuid: config.user.uuid, display_name: config.user.display_name };
+  const name = credentials.profile;
+  const profile = name ? config.profiles?.[name] : undefined;
+  const known = name ? profile?.user : config.user;
+  if (known && known.email === credentials.email && known.uuid) {
+    return { uuid: known.uuid, display_name: known.display_name };
   }
 
   try {
@@ -36,7 +40,7 @@ export async function currentUser(options: { timeoutMs?: number } = {}): Promise
     };
     if (!cached.uuid) return undefined;
     try {
-      writeConfig({ ...config, user: cached });
+      writeConfig(name && profile ? { ...config, profiles: { ...config.profiles, [name]: { ...profile, user: cached } } } : { ...config, user: cached });
     } catch {
       // cache is an optimisation; a read-only config dir must not fail the command
     }
