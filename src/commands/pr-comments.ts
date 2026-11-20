@@ -179,7 +179,7 @@ export function readBody(parsed: ParsedArgs, usage: string): string {
 
 export async function prComment(args: string[], ctx: RepoContext): Promise<string> {
   const command = "bb-axi pr comment";
-  const usage = `${command} <id> --body "<text>" [--path <file> --line <n> | --old-line <n>] [--reply-to <comment-id>] [--pending]`;
+  const usage = `${command} <id> --body "<text>" [--path <file> --line <n> | --old-line <n>] [--reply-to <comment-id>] [--pending] | ${command} <id> --publish <comment-id>`;
   const parsed = parseArgs(
     args,
     [
@@ -191,11 +191,19 @@ export async function prComment(args: string[], ctx: RepoContext): Promise<strin
       { name: "--reply-to" },
       { name: "--pending", boolean: true },
       { name: "--allow-duplicate", boolean: true },
+      { name: "--publish" },
     ],
     command,
   );
   const [rawId] = expectPositionals(parsed, 1, usage);
   const id = positiveId(rawId, "pull request id");
+  const publish = flag(parsed, "--publish");
+  if (publish !== undefined) {
+    const extra = ["--body", "--body-file", "--path", "--line", "--old-line", "--reply-to"].filter((f) => flag(parsed, f) !== undefined);
+    if (bool(parsed, "--pending")) extra.push("--pending");
+    if (extra.length > 0) throw usageError(`--publish takes no other comment flags (got ${extra.join(" ")})`, [usage]);
+    return publishPending(ctx, id, positiveId(publish, "--publish"));
+  }
   const text = readBody(parsed, usage);
   const path = flag(parsed, "--path");
   const line = flag(parsed, "--line");
@@ -263,7 +271,7 @@ export async function prComment(args: string[], ctx: RepoContext): Promise<strin
 
   const help: string[] = [];
   if (requestedPending && pending) {
-    help.push("Pending comments are visible only to you until you publish them from the pull request page");
+    help.push(`Pending comments are visible only to you; run \`bb-axi pr comment ${id} --publish ${num(created["id"]) ?? "<comment-id>"}${hint}\` to publish this one`);
   } else if (requestedPending && !pending) {
     help.push("Bitbucket did not keep this comment as pending - it is PUBLISHED and visible to everyone");
   }
@@ -276,6 +284,64 @@ export async function prComment(args: string[], ctx: RepoContext): Promise<strin
         pr: id,
         at: commentLocation(created["inline"] ? created : payload),
         result: pending ? "saved as pending (draft)" : "posted",
+        url: str(dig(created, "links", "html", "href")),
+      },
+    }),
+    helpBlock(help),
+  );
+}
+
+/**
+ * The public API cannot flip `pending` on an existing comment (PUT answers
+ * "extra keys not allowed"), so publishing reposts the draft at the same
+ * location and deletes the draft.
+ */
+async function publishPending(ctx: RepoContext, id: number, commentId: number): Promise<string> {
+  const hint = repoHint(ctx);
+  const draftPath = `${prPath(ctx, id)}/comments/${commentId}`;
+  const draft = toComment(await bbJson(draftPath));
+  const at = commentLocation(draft.raw);
+  if (draft.raw["deleted"] === true) {
+    throw axiError(`comment ${commentId} is deleted`, "NOT_FOUND", [`Run \`bb-axi pr comments ${id}${hint}\` to list the comments`]);
+  }
+  if (draft.raw["pending"] !== true) {
+    return out(
+      block({ comment: { id: commentId, pr: id, at, result: "already published (no-op)" } }),
+      helpBlock([`Run \`bb-axi pr comments ${id}${hint}\` to see the thread`]),
+    );
+  }
+
+  const payload: Obj = { content: { raw: body(draft) } };
+  const inline = obj(draft.raw["inline"]);
+  if (draft.parentId !== undefined) {
+    payload["parent"] = { id: draft.parentId };
+  } else if (str(inline["path"])) {
+    const anchor: Obj = { path: str(inline["path"]) };
+    if (num(inline["to"]) !== undefined) anchor["to"] = num(inline["to"]);
+    if (num(inline["from"]) !== undefined) anchor["from"] = num(inline["from"]);
+    payload["inline"] = anchor;
+  }
+  const created = obj(await bbJson(`${prPath(ctx, id)}/comments`, { method: "POST", body: payload }));
+  const newId = num(created["id"]) ?? null;
+
+  const help: string[] = [];
+  let draftResult = "draft deleted";
+  try {
+    await bbJson(draftPath, { method: "DELETE" });
+  } catch {
+    draftResult = "draft NOT deleted";
+    help.push(`Delete the leftover draft with \`bb-axi api DELETE /repositories/${ctx.slug}/pullrequests/${id}/comments/${commentId} --confirm\``);
+  }
+  help.push(`Run \`bb-axi pr comments ${id}${hint}\` to see the thread`);
+
+  return out(
+    block({
+      comment: {
+        id: newId,
+        draft: commentId,
+        pr: id,
+        at,
+        result: `published as a new comment - ${draftResult}`,
         url: str(dig(created, "links", "html", "href")),
       },
     }),

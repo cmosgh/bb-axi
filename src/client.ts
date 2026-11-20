@@ -62,7 +62,11 @@ function apiMessage(bodyText: string): string {
     const message = str(dig(parsed, "error", "message"));
     const detail = dig(parsed, "error", "detail");
     const extra = typeof detail === "string" ? detail : "";
-    return [message, extra].filter(Boolean).join(" - ").slice(0, 300);
+    // Validation errors name the offending keys only in `fields`.
+    const fields = Object.entries(obj(dig(parsed, "error", "fields")))
+      .map(([key, why]) => `${key} = ${Array.isArray(why) ? why.join("; ") : str(why)}`)
+      .join("; ");
+    return [message, extra, fields && `(${fields})`].filter(Boolean).join(" - ").slice(0, 300);
   } catch {
     return "";
   }
