@@ -79,7 +79,7 @@ The repository comes from the `bitbucket.org` remote of the current checkout; ov
 | `pr view <id>` | Reviewers with status, build summary (`2/3 passed; 1 failed (lint)`), comment/task counts, truncated description |
 | `pr diff <id>` | File table + line-number-annotated diff. `--path <file\|dir\|glob>`, `--stat`, `--raw`, `--full`. Lockfiles and bundles are elided; 32k-char budget cut at file boundaries |
 | `pr comments <id>` | Threads in order, replies under their root, `open / resolved / pending / outdated`, thread counts. `--unresolved`, `--path` |
-| `pr comment <id>` | `--body` or `--body-file <path\|->`; inline with `--path` + `--line` / `--old-line`; `--reply-to <id>`; `--pending` for a draft only you can see |
+| `pr comment <id>` | `--body` or `--body-file <path\|->`; inline with `--path` + `--line` / `--old-line`; `--reply-to <id>`; `--pending` for a draft only you can see; `--publish <comment-id>` publishes a draft |
 | `pr resolve / unresolve <id> <comment-id>` | Resolve or reopen a thread; any comment in it works. Idempotent |
 | `pr approve / unapprove / request-changes / unrequest-changes <id>` | Idempotent - repeating is a no-op, exit 0 |
 | `pr create` | `--title`, `--source` (default: current branch), `--dest`, `--reviewer`, `--default-reviewers`, `--draft`. No-op if the branch already has an open PR |
@@ -124,6 +124,8 @@ bb-axi pr comments 42 --unresolved      # repeat until it reports 0
 Every step is safe to re-run: a repeated reply is a no-op and resolving a resolved thread reports `(no-op)`, so an agent can loop until nothing is left open.
 
 `--pending` saves the comment as a Bitbucket draft: visible only to you until you publish it from the PR page. It is the safe mode for agent-drafted feedback - the human reads, edits and publishes. If Bitbucket ever publishes a comment that was requested as pending, `bb-axi` says so loudly in the result.
+
+`pr comment <id> --publish <comment-id>` publishes one draft. Bitbucket's public API cannot flip `pending` on an existing comment, so `bb-axi` reposts the text at the same spot (same reply parent or inline line) and deletes the draft: the published comment gets a new id. Already published comments are a no-op.
 
 ## Safety model
 

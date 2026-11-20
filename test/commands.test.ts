@@ -292,6 +292,52 @@ describe("pr comment", () => {
     expect(stdout).toContain("it is PUBLISHED and visible to everyone");
   });
 
+  it("--publish reposts a pending reply under the same parent and deletes the draft", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/pullrequests/42/comments/90`, json: { id: 90, pending: true, parent: { id: 7 }, content: { raw: "Fixed in abc" }, inline: { path: "src/a.ts", to: 3 } } },
+      { method: "POST", path: `${BASE}/pullrequests/42/comments`, status: 201, json: { id: 91, pending: false } },
+      { method: "DELETE", path: `${BASE}/pullrequests/42/comments/90`, status: 204 },
+    ]);
+    const { stdout, exitCode } = await run("pr", "comment", "42", "--publish", "90", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ content: { raw: "Fixed in abc" }, parent: { id: 7 } });
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+    expect(stdout).toContain("id: 91");
+    expect(stdout).toContain("published as a new comment - draft deleted");
+  });
+
+  it("--publish keeps the inline anchor of a top-level draft", async () => {
+    const { calls } = mockApi([
+      { path: `${BASE}/pullrequests/42/comments/92`, json: { id: 92, pending: true, content: { raw: "Why?" }, inline: { path: "src/a.ts", from: 9, to: null } } },
+      { method: "POST", path: `${BASE}/pullrequests/42/comments`, json: { id: 93 } },
+      { method: "DELETE", path: `${BASE}/pullrequests/42/comments/92`, status: 204 },
+    ]);
+    await run("pr", "comment", "42", "--publish", "92", ...REPO);
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ content: { raw: "Why?" }, inline: { path: "src/a.ts", from: 9 } });
+  });
+
+  it("--publish on a published comment is a no-op", async () => {
+    const { calls } = mockApi([{ path: `${BASE}/pullrequests/42/comments/94`, json: { id: 94, pending: false, content: { raw: "x" } } }]);
+    const { stdout, exitCode } = await run("pr", "comment", "42", "--publish", "94", ...REPO);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("already published (no-op)");
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("--publish rejects other comment flags", async () => {
+    const { calls } = mockApi([]);
+    const res = await run("pr", "comment", "42", "--publish", "90", "--body", "x", ...REPO);
+    expect(res.exitCode).toBe(2);
+    expect(res.stdout).toContain("--publish takes no other comment flags");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("shows Bitbucket's field errors on a 400", async () => {
+    mockApi([{ method: "PUT", path: `${BASE}/pullrequests/42/comments/90`, status: 400, json: { type: "error", error: { message: "Bad request", fields: { pending: "extra keys not allowed" } } } }]);
+    const { stdout } = await run("api", "PUT", `/repositories/acme/widgets/pullrequests/42/comments/90`, "--data", '{"pending":false}');
+    expect(stdout).toContain("pending = extra keys not allowed");
+  });
+
   it("validates flag combinations before any network call", async () => {
     const { calls } = mockApi([]);
     const noPath = await run("pr", "comment", "42", "--line", "3", "--body", "x", ...REPO);

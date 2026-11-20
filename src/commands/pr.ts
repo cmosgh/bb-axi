@@ -50,7 +50,7 @@ flags{diff}:
 flags{comments}:
   --unresolved (open threads only), --path <file|dir|glob> (repeatable), --limit <1-500> (default 100), --full (untruncated bodies)
 flags{comment}:
-  --body <text> | --body-file <path|->, --path <file> with --line <new-line> or --old-line <old-line>, --reply-to <comment-id>, --pending (draft, visible only to you until published), --allow-duplicate
+  --body <text> | --body-file <path|->, --path <file> with --line <new-line> or --old-line <old-line>, --reply-to <comment-id>, --pending (draft, visible only to you until published), --allow-duplicate; --publish <comment-id> publishes a pending draft (reposted at the same spot - new id - draft deleted)
 flags{resolve,unresolve}:
   none; any comment id in the thread works (the root is resolved)
 flags{create}:
